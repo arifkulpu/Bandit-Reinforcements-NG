@@ -49,3 +49,9 @@ Bandit Reinforcements NG is a dynamic SKSE plugin that adds a random number of e
 1. Ensure you have the appropriate version of [SKSE](http://skse.silverlock.org/) installed for your game.
 2. Drop the `BanditReinforcementsNG.dll` and `BanditReinforcementsNG.ini` (if available) into your `Data/SKSE/Plugins/` folder.
 3. Launch the game via SKSE.
+
+---
+
+## License / Lisans
+
+Copyright (c) 2026 Arif KULPU. All Rights Reserved. — Tüm Hakları Saklıdır. See [LICENSE.md](LICENSE.md) for details.
