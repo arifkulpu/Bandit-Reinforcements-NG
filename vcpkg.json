@@ -1,0 +1,10 @@
+{
+  "name": "bandit-reinforcements-ng",
+  "version": "1.0.0",
+  "dependencies": [
+    "commonlibsse-ng",
+    "spdlog",
+    "simpleini",
+    "fast-cpp-csv-parser"
+  ]
+}

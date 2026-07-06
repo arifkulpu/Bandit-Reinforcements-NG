@@ -1,0 +1,20 @@
+{
+  "name": "commonlibsse-ng",
+  "version-string": "1.0.0",
+  "description": "A fork of CommonLibSSE with advanced features for modern SKSE development, supporting portable plugins that work across AE, SE, and VR.",
+  "homepage": "https://github.com/CharmedBaryon/CommonLibSSE",
+  "license": "MIT",
+  "supports": "windows & x64",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "boost-stl-interfaces",
+    "rapidcsv",
+    "fmt",
+    "rsm-binary-io",
+    "spdlog",
+    "xbyak"
+  ]
+}

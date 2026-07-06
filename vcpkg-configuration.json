@@ -1,0 +1,17 @@
+{
+  "default-registry": {
+    "kind": "git",
+    "baseline": "a0400024711b283056538ac19ced80b91a83c24c",
+    "repository": "https://github.com/microsoft/vcpkg"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://gitlab.com/colorglass/vcpkg-colorglass",
+      "baseline": "59ebdd824b295fad4effcdccfe6e6aaa47ff4764",
+      "packages": [
+        "commonlibsse-ng"
+      ]
+    }
+  ]
+}
