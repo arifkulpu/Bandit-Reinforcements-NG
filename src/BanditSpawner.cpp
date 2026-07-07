@@ -259,12 +259,12 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction) {
     }
 
     // Ambush spawns closer, in a semicircle ahead of the player
-    float ambushDist = Settings::PatrolSpawnDistance * 0.5f;
+    float ambushDist = Settings::AmbushSpawnDistance;
     float playerAngle = player->GetAngleZ();
 
     for (int i = 0; i < count; ++i) {
         std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);
-        std::uniform_real_distribution<float> radiusDist(ambushDist * 0.6f, ambushDist * 1.2f);
+        std::uniform_real_distribution<float> radiusDist(ambushDist * 0.7f, ambushDist * 1.3f);
         float angle = playerAngle + arcDist(rng);
         float radius = radiusDist(rng);
         float offsetX = radius * std::cos(angle);
