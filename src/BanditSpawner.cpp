@@ -145,6 +145,14 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
         pos.y += offsetY;
         spawned->SetPosition(pos);
 
+        auto spawnedActor = spawned->As<RE::Actor>();
+        if (spawnedActor) {
+            // Force the actor to evaluate its AI so it doesn't stand still
+            spawnedActor->EvaluatePackage(true, true);
+            // Optionally, force combat update
+            spawnedActor->UpdateCombat();
+        }
+
         if (Settings::EnableLogging) {
             SKSE::log::info("  OK: Spawned '{}' (boss={}) at offset ({:.0f}, {:.0f})", 
                            listEditorID, isBoss, offsetX, offsetY);
