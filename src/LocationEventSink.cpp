@@ -32,28 +32,37 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     }
 
     auto cell = player->GetParentCell();
-    if (!cell) return RE::BSEventNotifyControl::kContinue;
+    if (!cell) {
+        if (Settings::EnableLogging) {
+            SKSE::log::warn("ProcessEvent: Player has no parent cell, skipping.");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
 
     bool isInterior = cell->IsInteriorCell();
 
+    if (Settings::EnableLogging) {
+        SKSE::log::info("--- Cell Event: Cell=0x{:08X}, Interior={}, WasInterior={} ---", 
+                        cell->GetFormID(), isInterior, m_wasInInterior);
+    }
+
     // ── AMBUSH CHECK: Interior → Exterior transition (dungeon exit) ──
     if (m_wasInInterior && !isInterior && m_lastInteriorCellID != 0) {
-        // Player just exited an interior cell (dungeon exit)
-        // Check if the previous interior had a hostile faction location
-        auto prevForm = RE::TESForm::LookupByID<RE::TESObjectCELL>(m_lastInteriorCellID);
-        if (prevForm) {
-            auto prevLoc = prevForm->GetLocation();
+        if (Settings::EnableLogging) {
+            SKSE::log::info("Dungeon EXIT detected! Previous interior cell: 0x{:08X}", m_lastInteriorCellID);
+        }
+
+        auto prevCell = RE::TESForm::LookupByID<RE::TESObjectCELL>(m_lastInteriorCellID);
+        if (prevCell) {
+            auto prevLoc = prevCell->GetLocation();
             if (prevLoc) {
                 auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
                 if (faction != FactionType::Unknown) {
                     if (Settings::EnableLogging) {
-                        SKSE::log::info("Dungeon exit detected! Checking ambush for faction {}...", 
-                                        static_cast<int>(faction));
+                        SKSE::log::info("  Ambush check for faction={}", static_cast<int>(faction));
                     }
-                    // Ambush has its own internal chance roll
                     auto ambushResult = BanditSpawner::SpawnAmbush(faction);
                     if (ambushResult.count > 0) {
-                        // Register ambush spawns under the exterior cell for tracking
                         RE::FormID trackID = cell->GetFormID();
                         SpawnTracker::GetSingleton()->RegisterSpawn(trackID, ambushResult.spawnedActors);
                     }
@@ -69,19 +78,47 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     // ── Lazy Update: clean up expired/cleared spawns ──
     SpawnTracker::GetSingleton()->Update();
 
-    // ── REINFORCEMENT CHECK: Entering a hostile location ──
-    auto loc = cell->GetLocation();
-    if (!loc) return RE::BSEventNotifyControl::kContinue;
+    // ── REINFORCEMENT CHECK ──
+    // Try multiple ways to get the location (robustness)
+    RE::BGSLocation* loc = cell->GetLocation();
+    
+    // Fallback: try player's current location if cell has none
+    if (!loc) {
+        loc = player->GetCurrentLocation();
+    }
+
+    if (!loc) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  No location found for cell or player, skipping reinforcements.");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    if (Settings::EnableLogging) {
+        SKSE::log::info("  Location found: 0x{:08X}", loc->GetFormID());
+    }
 
     auto faction = BanditSpawner::GetFactionFromLocation(loc);
-    if (faction == FactionType::Unknown) return RE::BSEventNotifyControl::kContinue;
+    if (faction == FactionType::Unknown) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  Location has no hostile faction keyword, skipping.");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
 
     RE::FormID trackID = loc->GetFormID();
 
     if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  Location READY for reinforcements (faction={})", static_cast<int>(faction));
+        }
         auto spawnResult = BanditSpawner::SpawnReinforcements(cell, faction);
         if (spawnResult.count > 0) {
             SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
+        }
+    } else {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  Location NOT ready (cooldown or already spawned).");
         }
     }
 

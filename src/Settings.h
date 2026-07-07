@@ -3,6 +3,7 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 #include <SimpleIni.h>
+#include <filesystem>
 
 namespace Settings {
     // General
@@ -34,10 +35,65 @@ namespace Settings {
     inline bool EnableForsworn = true;
     inline bool EnableDraugr = true;
 
-    inline void Load() {
+    inline constexpr const char* INI_PATH = "Data/SKSE/Plugins/BanditReinforcementsNG.ini";
+
+    // If INI doesn't exist, create it with default values
+    inline void CreateDefaultINI() {
         CSimpleIniA ini;
         ini.SetUnicode();
-        if (ini.LoadFile("Data/SKSE/Plugins/BanditReinforcementsNG.ini") == SI_OK) {
+
+        // Settings
+        ini.SetBoolValue("Settings", "bEnableLogging", true,
+            "; Loglama aktif mi (1: Evet, 0: Hayir) / Enable logging (1: Yes, 0: No)");
+
+        // Spawning
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel1_10", 3,
+            "; Oyuncunun seviyesine gore maksimum ek dusman sayisi / Max extra enemies by player level");
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_25", 6);
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel25Plus", 10);
+        ini.SetDoubleValue("Spawning", "fPatrolSpawnDistance", 2000.0,
+            "; Dusmanlar oyuncudan ne kadar uzakta dogacak (oyun birimi) / Patrol spawn distance (game units)");
+
+        // Boss
+        ini.SetLongValue("Boss", "iBossSpawnChance", 15,
+            "; Boss dogma sansi (0-100) / Boss spawn chance (0-100 percent)");
+        ini.SetLongValue("Boss", "iBossMinPlayerLevel", 10,
+            "; Boss icin minimum oyuncu seviyesi / Min player level for boss spawns");
+
+        // Ambush
+        ini.SetLongValue("Ambush", "iAmbushChance", 30,
+            "; Pusu dogma sansi (0-100) / Ambush chance on dungeon exit (0-100)");
+        ini.SetLongValue("Ambush", "iAmbushMinCount", 2,
+            "; Pusu grubundaki min/max dusman / Min and max enemies in ambush group");
+        ini.SetLongValue("Ambush", "iAmbushMaxCount", 5);
+
+        // Cooldown
+        ini.SetDoubleValue("Cooldown", "fClearedCooldownDays", 10.0,
+            "; Temizlenmis bolgeler icin bekleme (gun) / Cooldown for cleared locations (days)");
+        ini.SetDoubleValue("Cooldown", "fVisitedCooldownDays", 3.0,
+            "; Kacilan bolgeler icin bekleme (gun) / Cooldown for fled locations (days)");
+
+        // Factions
+        ini.SetBoolValue("Factions", "bEnableBandits", true,
+            "; Hangi fraksiyonlar aktif? (1: Aktif, 0: Pasif) / Which factions are enabled?");
+        ini.SetBoolValue("Factions", "bEnableVampires", true);
+        ini.SetBoolValue("Factions", "bEnableWarlocks", true);
+        ini.SetBoolValue("Factions", "bEnableForsworn", true);
+        ini.SetBoolValue("Factions", "bEnableDraugr", true);
+
+        ini.SaveFile(INI_PATH);
+    }
+
+    inline void Load() {
+        // If INI file doesn't exist, create it with defaults
+        if (!std::filesystem::exists(INI_PATH)) {
+            CreateDefaultINI();
+            SKSE::log::info("INI file not found. Created default: {}", INI_PATH);
+        }
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        if (ini.LoadFile(INI_PATH) == SI_OK) {
             // General
             EnableLogging = ini.GetBoolValue("Settings", "bEnableLogging", true);
 
@@ -66,6 +122,8 @@ namespace Settings {
             EnableWarlocks = ini.GetBoolValue("Factions", "bEnableWarlocks", true);
             EnableForsworn = ini.GetBoolValue("Factions", "bEnableForsworn", true);
             EnableDraugr = ini.GetBoolValue("Factions", "bEnableDraugr", true);
+
+            SKSE::log::info("INI loaded successfully from {}", INI_PATH);
         }
     }
 }

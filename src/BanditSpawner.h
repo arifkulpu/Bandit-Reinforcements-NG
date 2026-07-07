@@ -3,6 +3,7 @@
 #include <RE/Skyrim.h>
 #include <vector>
 #include <string>
+#include <random>
 
 // Supported faction types
 enum class FactionType {
@@ -30,10 +31,10 @@ public:
     // Determine faction type from a BGSLocation's keywords
     static FactionType GetFactionFromLocation(RE::BGSLocation* loc);
 
-private:
     // Get the EditorID of the leveled character list for a faction
     static const char* GetLeveledListEditorID(FactionType faction, bool isBoss);
 
+private:
     // Calculate how many enemies to spawn based on player level
     static int GetSpawnCount();
 
