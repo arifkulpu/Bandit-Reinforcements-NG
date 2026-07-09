@@ -2,6 +2,7 @@
 #include "Settings.h"
 #include <random>
 #include <cmath>
+#include <SKSE/SKSE.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -47,28 +48,31 @@ const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBo
 }
 
 // ── Fallback FormIDs for vanilla leveled lists ───────────────────
-// Used when EditorID lookup fails (more reliable across SE/AE/VR)
 static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction, bool isBoss) {
     auto form = RE::TESForm::LookupByEditorID(editorID);
-    if (form) return form;
+    if (form) {
+        if (Settings::EnableLogging)
+            SKSE::log::info("  LeveledList OK by EditorID: '{}'", editorID);
+        return form;
+    }
 
     // Fallback to vanilla Skyrim.esm FormIDs
     RE::FormID fallbackID = 0;
     switch (faction) {
         case FactionType::Bandit:
-            fallbackID = isBoss ? 0x0003DF03 : 0x001068FF; // LCharBanditBoss / LCharBandit (LCharBanditMelee)
+            fallbackID = isBoss ? 0x0003DF03 : 0x001068FF;
             break;
         case FactionType::Vampire:
-            fallbackID = isBoss ? 0x0009B2C0 : 0x00014B91; // LCharVampireBoss / LCharVampire
+            fallbackID = isBoss ? 0x0009B2C0 : 0x00014B91;
             break;
         case FactionType::Warlock:
-            fallbackID = isBoss ? 0x0003DF05 : 0x0010EF01; // LCharWarlockBoss / LCharWarlock
+            fallbackID = isBoss ? 0x0003DF05 : 0x0010EF01;
             break;
         case FactionType::Forsworn:
-            fallbackID = isBoss ? 0x0009B2C6 : 0x00046090; // LCharForswornBoss / LCharForsworn
+            fallbackID = isBoss ? 0x0009B2C6 : 0x00046090;
             break;
         case FactionType::Draugr:
-            fallbackID = isBoss ? 0x0003DF01 : 0x0001397E; // LCharDraugrBoss / LCharDraugr (LCharDraugrMelee)
+            fallbackID = isBoss ? 0x0003DF01 : 0x0001397E;
             break;
         default:
             fallbackID = isBoss ? 0x0003DF03 : 0x001068FF;
@@ -77,8 +81,10 @@ static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction,
 
     if (fallbackID != 0) {
         form = RE::TESForm::LookupByID(fallbackID);
-        if (form && Settings::EnableLogging) {
-            SKSE::log::info("  EditorID '{}' not found, using fallback FormID 0x{:08X}", editorID, fallbackID);
+        if (form) {
+            SKSE::log::warn("  LeveledList fallback: EditorID '{}' not found, using FormID 0x{:08X}", editorID, fallbackID);
+        } else {
+            SKSE::log::error("  LeveledList FAILED: EditorID '{}' AND FormID 0x{:08X} both missing!", editorID, fallbackID);
         }
     }
     return form;
@@ -88,7 +94,6 @@ static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction,
 FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (!loc) return FactionType::Unknown;
 
-    // Look up keywords by EditorID (safe across SE/AE/VR)
     auto kwdBandit   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeBanditCamp");
     auto kwdVampire  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeVampireLair");
     auto kwdWarlock  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeWarlockLair");
@@ -96,7 +101,7 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     auto kwdDraugr   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDraugrCrypt");
     auto kwdDungeon  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDungeon");
 
-    // Fallback: hardcoded FormIDs from Skyrim.esm
+    // FormID fallbacks
     if (!kwdBandit)   kwdBandit   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000171DF);
     if (!kwdVampire)  kwdVampire  = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DB);
     if (!kwdWarlock)  kwdWarlock  = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DE);
@@ -104,16 +109,63 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (!kwdDraugr)   kwdDraugr   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D2);
     if (!kwdDungeon)  kwdDungeon  = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0E);
 
+    if (Settings::EnableLogging) {
+        SKSE::log::info("  GetFactionFromLocation: loc=0x{:08X}", loc->GetFormID());
+        SKSE::log::info("    kwdBandit={}, kwdVampire={}, kwdWarlock={}, kwdForsworn={}, kwdDraugr={}, kwdDungeon={}",
+            kwdBandit != nullptr, kwdVampire != nullptr, kwdWarlock != nullptr,
+            kwdForsworn != nullptr, kwdDraugr != nullptr, kwdDungeon != nullptr);
+        SKSE::log::info("    hasBandit={}, hasVampire={}, hasWarlock={}, hasForsworn={}, hasDraugr={}, hasDungeon={}",
+            kwdBandit ? loc->HasKeyword(kwdBandit) : false,
+            kwdVampire ? loc->HasKeyword(kwdVampire) : false,
+            kwdWarlock ? loc->HasKeyword(kwdWarlock) : false,
+            kwdForsworn ? loc->HasKeyword(kwdForsworn) : false,
+            kwdDraugr ? loc->HasKeyword(kwdDraugr) : false,
+            kwdDungeon ? loc->HasKeyword(kwdDungeon) : false);
+    }
+
     if (kwdBandit   && loc->HasKeyword(kwdBandit)   && Settings::EnableBandits)   return FactionType::Bandit;
     if (kwdForsworn && loc->HasKeyword(kwdForsworn) && Settings::EnableForsworn)  return FactionType::Forsworn;
     if (kwdVampire  && loc->HasKeyword(kwdVampire)  && Settings::EnableVampires)  return FactionType::Vampire;
     if (kwdWarlock  && loc->HasKeyword(kwdWarlock)  && Settings::EnableWarlocks)  return FactionType::Warlock;
     if (kwdDraugr   && loc->HasKeyword(kwdDraugr)   && Settings::EnableDraugr)    return FactionType::Draugr;
-
-    // If it has a dungeon keyword but no specific faction, default to Bandit
-    if (kwdDungeon && loc->HasKeyword(kwdDungeon) && Settings::EnableBandits) return FactionType::Bandit;
+    if (kwdDungeon  && loc->HasKeyword(kwdDungeon)  && Settings::EnableBandits)   return FactionType::Bandit;
 
     return FactionType::Unknown;
+}
+
+// ── Post-spawn AI fix (called on game thread via TaskInterface) ───
+// Skyrim'de PlaceObjectAtMe sonrası aktör tam yüklenmeden SetPosition/EvaluatePackage
+// çağrılırsa animasyon glitch ve T-pose oluşur.
+// Bu fonksiyon bir sonraki frame'de game thread'inde çalışarak aktörü düzgün başlatır.
+void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle) {
+    auto taskInterface = SKSE::GetTaskInterface();
+    if (!taskInterface) return;
+
+    // Kopyayı lambda'ya capture et
+    taskInterface->AddTask([handle]() {
+        auto ref = handle.get();
+        if (!ref) return;
+
+        auto actor = ref->As<RE::Actor>();
+        if (!actor || actor->IsDead()) return;
+
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) return;
+
+        // 1. Aktörü yüksek LOD moduna al (görünür hale getir)
+        actor->MoveToHigh();
+
+        // 2. AI paketini sıfırla ve yeniden değerlendir
+        actor->EvaluatePackage(true, true);
+
+        // 3. Savaş sistemini güncelle → oyuncuyu düşman olarak algılar
+        actor->UpdateCombat();
+
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI initialized on game thread", 
+                            actor->GetFormID());
+        }
+    });
 }
 
 // ── Helper: Spawn a single actor ─────────────────────────────────
@@ -123,47 +175,43 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
     auto listForm = LookupLeveledList(listEditorID, faction, isBoss);
 
     if (!listForm) {
-        if (Settings::EnableLogging) {
-            SKSE::log::warn("  FAILED: Could not find leveled list for faction={} boss={}", 
-                           static_cast<int>(faction), isBoss);
-        }
+        SKSE::log::error("  SPAWN FAILED: No leveled list found for faction={} boss={}", 
+                        static_cast<int>(faction), isBoss);
         return RE::ObjectRefHandle();
     }
 
     auto baseObj = listForm->As<RE::TESBoundObject>();
     if (!baseObj) {
-        if (Settings::EnableLogging) {
-            SKSE::log::warn("  FAILED: Form is not TESBoundObject");
-        }
+        SKSE::log::error("  SPAWN FAILED: Form 0x{:08X} is not TESBoundObject", listForm->GetFormID());
         return RE::ObjectRefHandle();
     }
 
+    // PlaceObjectAtMe: aktörü anchor'ın yanında doğur, OFFSET YOK!
+    // Offset'i SetPosition ile değil, MoveTo_Impl'in pos argümanıyla vereceğiz.
     auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
-    if (spawned) {
-        RE::NiPoint3 pos = anchor->GetPosition();
-        pos.x += offsetX;
-        pos.y += offsetY;
-        spawned->SetPosition(pos);
-
-        auto spawnedActor = spawned->As<RE::Actor>();
-        if (spawnedActor) {
-            // Force the actor to evaluate its AI so it doesn't stand still
-            spawnedActor->EvaluatePackage(true, true);
-            // Optionally, force combat update
-            spawnedActor->UpdateCombat();
-        }
-
-        if (Settings::EnableLogging) {
-            SKSE::log::info("  OK: Spawned '{}' (boss={}) at offset ({:.0f}, {:.0f})", 
-                           listEditorID, isBoss, offsetX, offsetY);
-        }
-        return spawned->GetHandle();
+    if (!spawned) {
+        SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null");
+        return RE::ObjectRefHandle();
     }
+
+    // Aktörü doğru konuma taşı
+    RE::NiPoint3 targetPos = anchor->GetPosition();
+    targetPos.x += offsetX;
+    targetPos.y += offsetY;
+    // Z koordinatı: anchor'dan 0 fark (yükseklik sabit)
+    spawned->SetPosition(targetPos);
+
+    auto handle = spawned->GetHandle();
 
     if (Settings::EnableLogging) {
-        SKSE::log::warn("  FAILED: PlaceObjectAtMe returned null");
+        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X}", 
+                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID());
     }
-    return RE::ObjectRefHandle();
+
+    // AI fix'i bir sonraki frame'e ertele (animasyon glitch önleme)
+    BanditSpawner::FixActorAI(handle);
+
+    return handle;
 }
 
 // ── Main spawn: Reinforcements ───────────────────────────────────
@@ -175,17 +223,14 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     int count = GetSpawnCount();
     bool isInterior = cell->IsInteriorCell();
 
-    if (Settings::EnableLogging) {
-        SKSE::log::info("=== SpawnReinforcements ===");
-        SKSE::log::info("  Count={}, Faction={}, Interior={}, Cell=0x{:08X}", 
-                        count, static_cast<int>(faction), isInterior, cell->GetFormID());
-    }
+    SKSE::log::info("=== SpawnReinforcements ===");
+    SKSE::log::info("  Count={}, Faction={}, Interior={}, Cell=0x{:08X}", 
+                    count, static_cast<int>(faction), isInterior, cell->GetFormID());
 
     auto& rng = GetRNG();
 
-    // ── KEY FIX: Interior vs Exterior spawn distance ──
-    // Interior (cave/dungeon): spawn close (200-500 units) so they stay inside the geometry
-    // Exterior (camp): spawn far (patrol distance) so they walk towards the player
+    // İç mekan: 200-500 birim (mağara içinde kalır)
+    // Dış mekan: PatrolSpawnDistance kadar uzak (devriye etkisi)
     float minDist, maxDist;
     if (isInterior) {
         minDist = 200.0f;
@@ -196,24 +241,20 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         maxDist = base * 1.3f;
     }
 
-    // Check boss spawn chance
+    // Boss spawn kontrolü
     bool shouldSpawnBoss = false;
     int pLevel = player->GetLevel();
     if (pLevel >= Settings::BossMinPlayerLevel) {
         std::uniform_int_distribution<> bossDist(1, 100);
         if (bossDist(rng) <= Settings::BossSpawnChance) {
             shouldSpawnBoss = true;
+            SKSE::log::info("  >> BOSS SPAWN triggered! (player level={})", pLevel);
         }
     }
 
     for (int i = 0; i < count; ++i) {
         bool isBoss = (shouldSpawnBoss && i == 0);
 
-        if (isBoss && Settings::EnableLogging) {
-            SKSE::log::info("  >> BOSS SPAWN triggered!");
-        }
-
-        // Spawn in a ring around the player
         std::uniform_real_distribution<float> angleDist(0.0f, static_cast<float>(2.0 * M_PI));
         std::uniform_real_distribution<float> radiusDist(minDist, maxDist);
         float angle = angleDist(rng);
@@ -228,10 +269,7 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     }
 
     result.count = static_cast<int>(result.spawnedActors.size());
-
-    if (Settings::EnableLogging) {
-        SKSE::log::info("=== SpawnReinforcements DONE: {}/{} spawned ===", result.count, count);
-    }
+    SKSE::log::info("=== SpawnReinforcements DONE: {}/{} spawned ===", result.count, count);
 
     return result;
 }
@@ -244,34 +282,28 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction) {
 
     auto& rng = GetRNG();
 
-    // Roll ambush chance
+    // Şans kontrolü
     std::uniform_int_distribution<> chanceDist(1, 100);
     int roll = chanceDist(rng);
     if (roll > Settings::AmbushChance) {
-        if (Settings::EnableLogging) {
-            SKSE::log::info("SpawnAmbush: Chance FAILED (rolled {} > {}%)", roll, Settings::AmbushChance);
-        }
+        SKSE::log::info("SpawnAmbush: SKIPPED (rolled {}%, threshold {}%)", roll, Settings::AmbushChance);
         return result;
     }
 
-    int minC = Settings::AmbushMinCount;
-    int maxC = Settings::AmbushMaxCount;
-    if (minC < 1) minC = 1;
-    if (maxC < minC) maxC = minC;
+    int minC = (Settings::AmbushMinCount < 1) ? 1 : Settings::AmbushMinCount;
+    int maxC = (Settings::AmbushMaxCount < minC) ? minC : Settings::AmbushMaxCount;
     std::uniform_int_distribution<> countDist(minC, maxC);
     int count = countDist(rng);
 
-    if (Settings::EnableLogging) {
-        SKSE::log::info("=== SpawnAmbush ===");
-        SKSE::log::info("  AMBUSH TRIGGERED! {} enemies, faction={}", count, static_cast<int>(faction));
-    }
+    SKSE::log::info("=== SpawnAmbush ===");
+    SKSE::log::info("  AMBUSH! count={}, faction={}, roll={}%", count, static_cast<int>(faction), roll);
 
-    // Ambush spawns closer, in a semicircle ahead of the player
     float ambushDist = Settings::AmbushSpawnDistance;
     float playerAngle = player->GetAngleZ();
 
     for (int i = 0; i < count; ++i) {
-        std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);
+        // Oyuncunun önünde 120 derecelik bir yarım dairede yayıl
+        std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);  // ±60 derece
         std::uniform_real_distribution<float> radiusDist(ambushDist * 0.7f, ambushDist * 1.3f);
         float angle = playerAngle + arcDist(rng);
         float radius = radiusDist(rng);
@@ -285,10 +317,7 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction) {
     }
 
     result.count = static_cast<int>(result.spawnedActors.size());
-
-    if (Settings::EnableLogging) {
-        SKSE::log::info("=== SpawnAmbush DONE: {}/{} spawned ===", result.count, count);
-    }
+    SKSE::log::info("=== SpawnAmbush DONE: {}/{} spawned ===", result.count, count);
 
     return result;
 }

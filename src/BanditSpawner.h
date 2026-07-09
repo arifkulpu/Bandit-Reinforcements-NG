@@ -34,10 +34,10 @@ public:
     // Get the EditorID of the leveled character list for a faction
     static const char* GetLeveledListEditorID(FactionType faction, bool isBoss);
 
-private:
-    // Calculate how many enemies to spawn based on player level
-    static int GetSpawnCount();
+    // Post-spawn AI fix: called on game thread with a delay
+    static void FixActorAI(RE::ObjectRefHandle handle);
 
-    // Shared random engine (thread-local for safety)
+private:
+    static int GetSpawnCount();
     static std::mt19937& GetRNG();
 };

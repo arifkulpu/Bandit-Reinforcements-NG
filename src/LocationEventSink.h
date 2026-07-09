@@ -13,4 +13,7 @@ private:
     // Track the last interior cell to detect dungeon exits (for ambush)
     RE::FormID m_lastInteriorCellID = 0;
     bool m_wasInInterior = false;
+
+    // Prevent processing same cell multiple times in a row
+    RE::FormID m_lastProcessedCellID = 0;
 };
