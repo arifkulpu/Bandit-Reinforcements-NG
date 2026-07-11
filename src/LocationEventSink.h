@@ -26,4 +26,7 @@ private:
 
     // Prevent processing same cell multiple times in a row
     RE::FormID m_lastProcessedCellID = 0;
+
+    // Disik kamp tespiti: Son spawn yapilan exterior cell
+    RE::FormID m_lastExteriorSpawnCellID = 0;
 };

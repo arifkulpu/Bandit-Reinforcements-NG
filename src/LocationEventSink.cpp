@@ -78,6 +78,70 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     m_lastInteriorCellID = isInterior ? currentCellID : 0;
     SpawnTracker::GetSingleton()->Update();
 
+    // ── İSİMSİZ DIŞ MEKAN KAMPI TESPİTİ ──────────────────────────────
+    // ActorLocationChangeEvent isimsiz kamplar icin tetiklenmez.
+    // Dış mekan hücresine girince hücreyi tara; eğer düşman NPC varsa spawn tetikle.
+    if (!isInterior && currentCellID != m_lastExteriorSpawnCellID) {
+        // SpawnTracker'da bu hücre zaten işlendiyse atla
+        if (!SpawnTracker::GetSingleton()->IsLocationReady(currentCellID)) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        // Hücrede düşman NPC tara
+        FactionType detectedFaction = FactionType::Unknown;
+        int hostileCount = 0;
+
+        for (auto& ref : cell->GetRuntimeData().references) {
+            if (!ref) continue;
+            auto actor = ref->As<RE::Actor>();
+            if (!actor || actor == player || actor->IsDead()) continue;
+            if (!actor->IsHostileToActor(player)) continue;
+
+            // Bu hücre isimsiz bir kamp — faction'ı NPC'den tahmin et
+            actor->VisitFactions([&](RE::TESFaction* f, int8_t) {
+                if (!f) return false;
+                RE::FormID fID = f->GetFormID();
+                if (fID == 0x0001BCC0 && Settings::EnableBandits)   { detectedFaction = FactionType::Bandit;   return true; }
+                if (fID == 0x00027242 && Settings::EnableVampires)  { detectedFaction = FactionType::Vampire;  return true; }
+                if (fID == 0x00030C66 && Settings::EnableWarlocks)  { detectedFaction = FactionType::Warlock;  return true; }
+                if (fID == 0x00043599 && Settings::EnableForsworn)  { detectedFaction = FactionType::Forsworn; return true; }
+                if (fID == 0x0002430D && Settings::EnableDraugr)    { detectedFaction = FactionType::Draugr;   return true; }
+                if ((fID == 0x0001CB62 || fID == 0x00028FDF) && Settings::EnableAnimals) { detectedFaction = FactionType::Animal; return true; }
+                if (fID == 0x0002446A && Settings::EnableFalmer)    { detectedFaction = FactionType::Falmer;   return true; }
+                if (fID == 0x0001BCC1 && Settings::EnableDwemer)    { detectedFaction = FactionType::Dwemer;   return true; }
+                return false;
+            });
+
+            if (detectedFaction != FactionType::Unknown) {
+                hostileCount++;
+                if (hostileCount >= 2) break; // En az 2 düşman — gerçek bir kamp
+            }
+        }
+
+        if (detectedFaction != FactionType::Unknown && hostileCount >= 2) {
+            m_lastExteriorSpawnCellID = currentCellID;
+            SKSE::log::info(">> UNNAMED CAMP DETECTED in cell 0x{:08X} (faction={}, hostiles={})",
+                           currentCellID, static_cast<int>(detectedFaction), hostileCount);
+
+            BanditSpawner::UpdateCache(cell, detectedFaction);
+
+            auto taskInterface = SKSE::GetTaskInterface();
+            if (taskInterface) {
+                taskInterface->AddTask([currentCellID, detectedFaction]() {
+                    auto p = RE::PlayerCharacter::GetSingleton();
+                    if (!p) return;
+                    auto currentCell2 = p->GetParentCell();
+                    if (!currentCell2) return;
+
+                    auto spawnResult = BanditSpawner::SpawnReinforcements(currentCell2, detectedFaction);
+                    if (spawnResult.count > 0) {
+                        SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, spawnResult.spawnedActors);
+                    }
+                });
+            }
+        }
+    }
+
     return RE::BSEventNotifyControl::kContinue;
 }
 
