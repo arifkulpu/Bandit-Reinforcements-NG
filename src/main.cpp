@@ -34,10 +34,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     SKSE::log::info("  Logging={}, Bandits={}, Vampires={}, Warlocks={}, Forsworn={}, Draugr={}",
         Settings::EnableLogging, Settings::EnableBandits, Settings::EnableVampires,
         Settings::EnableWarlocks, Settings::EnableForsworn, Settings::EnableDraugr);
+    SKSE::log::info("  Animals={}, Falmer={}, Dwemer={}",
+        Settings::EnableAnimals, Settings::EnableFalmer, Settings::EnableDwemer);
     SKSE::log::info("  PatrolDist={:.0f}, AmbushDist={:.0f}, AmbushChance={}%",
         Settings::PatrolSpawnDistance, Settings::AmbushSpawnDistance, Settings::AmbushChance);
-    SKSE::log::info("  Boss: Chance={}%, MinLevel={}",
-        Settings::BossSpawnChance, Settings::BossMinPlayerLevel);
+    SKSE::log::info("  Boss Chances: L10-24={}%, L25-49={}%, L50+={}%",
+        Settings::BossChanceLevel10_24, Settings::BossChanceLevel25_49, Settings::BossChanceLevel50Plus);
 
     // TaskInterface kaydını doğrula
     auto taskInterface = SKSE::GetTaskInterface();

@@ -9,15 +9,16 @@ namespace Settings {
     // General
     inline bool EnableLogging = true;
 
-    // Spawning
-    inline int MaxSpawnsLevel1_10 = 3;
-    inline int MaxSpawnsLevel10_25 = 6;
-    inline int MaxSpawnsLevel25Plus = 10;
+    // Spawning (Level-based max spawns)
+    inline int MaxSpawnsLevel10_24 = 5;
+    inline int MaxSpawnsLevel25_49 = 10;
+    inline int MaxSpawnsLevel50Plus = 15;
     inline float PatrolSpawnDistance = 2000.0f;
 
-    // Boss
-    inline int BossSpawnChance = 15;
-    inline int BossMinPlayerLevel = 10;
+    // Boss (Level-based chance)
+    inline int BossChanceLevel10_24 = 20;
+    inline int BossChanceLevel25_49 = 30;
+    inline int BossChanceLevel50Plus = 40;
 
     // Ambush
     inline int AmbushChance = 30;
@@ -36,6 +37,9 @@ namespace Settings {
     inline bool EnableWarlocks = true;
     inline bool EnableForsworn = true;
     inline bool EnableDraugr = true;
+    inline bool EnableAnimals = true;
+    inline bool EnableFalmer = true;
+    inline bool EnableDwemer = true;
 
     // FormIDs for Leveled Lists (Hex strings)
     inline std::string FormID_Bandit = "0x0001068A";
@@ -61,18 +65,20 @@ namespace Settings {
             "; Loglama aktif mi (1: Evet, 0: Hayir) / Enable logging (1: Yes, 0: No)");
 
         // Spawning
-        ini.SetLongValue("Spawning", "iMaxSpawnsLevel1_10", 3,
-            "; Oyuncunun seviyesine gore maksimum ek dusman sayisi / Max extra enemies by player level");
-        ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_25", 6);
-        ini.SetLongValue("Spawning", "iMaxSpawnsLevel25Plus", 10);
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5,
+            "; Level 10-24 arasinda maks ek dusman (Lvl 1-9 hic dogma yapmaz) / Max spawns for Lvl 10-24 (Lvl 1-9 spawns nothing)");
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel25_49", 10);
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel50Plus", 15);
         ini.SetDoubleValue("Spawning", "fPatrolSpawnDistance", 2000.0,
             "; Dusmanlar oyuncudan ne kadar uzakta dogacak (oyun birimi) / Patrol spawn distance (game units)");
 
         // Boss
-        ini.SetLongValue("Boss", "iBossSpawnChance", 15,
-            "; Boss dogma sansi (0-100) / Boss spawn chance (0-100 percent)");
-        ini.SetLongValue("Boss", "iBossMinPlayerLevel", 10,
-            "; Boss icin minimum oyuncu seviyesi / Min player level for boss spawns");
+        ini.SetLongValue("Boss", "iBossChanceLevel10_24", 20,
+            "; Lvl 10-24 arasi boss dogma ihtimali (0-100) / Boss spawn chance Lvl 10-24");
+        ini.SetLongValue("Boss", "iBossChanceLevel25_49", 30,
+            "; Lvl 25-49 arasi boss dogma ihtimali (0-100) / Boss spawn chance Lvl 25-49");
+        ini.SetLongValue("Boss", "iBossChanceLevel50Plus", 40,
+            "; Lvl 50+ arasi boss dogma ihtimali (0-100) / Boss spawn chance Lvl 50+");
 
         // Ambush
         ini.SetLongValue("Ambush", "iAmbushChance", 30,
@@ -98,6 +104,9 @@ namespace Settings {
         ini.SetBoolValue("Factions", "bEnableWarlocks", true);
         ini.SetBoolValue("Factions", "bEnableForsworn", true);
         ini.SetBoolValue("Factions", "bEnableDraugr", true);
+        ini.SetBoolValue("Factions", "bEnableAnimals", true);
+        ini.SetBoolValue("Factions", "bEnableFalmer", true);
+        ini.SetBoolValue("Factions", "bEnableDwemer", true);
 
         // FormIDs
         ini.SetValue("FormIDs", "sBandit", "0x0001068A",
@@ -129,14 +138,15 @@ namespace Settings {
             EnableLogging = ini.GetBoolValue("Settings", "bEnableLogging", true);
 
             // Spawning
-            MaxSpawnsLevel1_10 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel1_10", 3));
-            MaxSpawnsLevel10_25 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel10_25", 6));
-            MaxSpawnsLevel25Plus = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel25Plus", 10));
+            MaxSpawnsLevel10_24 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5));
+            MaxSpawnsLevel25_49 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel25_49", 10));
+            MaxSpawnsLevel50Plus = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel50Plus", 15));
             PatrolSpawnDistance = static_cast<float>(ini.GetDoubleValue("Spawning", "fPatrolSpawnDistance", 2000.0));
 
             // Boss
-            BossSpawnChance = static_cast<int>(ini.GetLongValue("Boss", "iBossSpawnChance", 15));
-            BossMinPlayerLevel = static_cast<int>(ini.GetLongValue("Boss", "iBossMinPlayerLevel", 10));
+            BossChanceLevel10_24 = static_cast<int>(ini.GetLongValue("Boss", "iBossChanceLevel10_24", 20));
+            BossChanceLevel25_49 = static_cast<int>(ini.GetLongValue("Boss", "iBossChanceLevel25_49", 30));
+            BossChanceLevel50Plus = static_cast<int>(ini.GetLongValue("Boss", "iBossChanceLevel50Plus", 40));
 
             // Ambush
             AmbushChance = static_cast<int>(ini.GetLongValue("Ambush", "iAmbushChance", 30));
@@ -155,6 +165,9 @@ namespace Settings {
             EnableWarlocks = ini.GetBoolValue("Factions", "bEnableWarlocks", true);
             EnableForsworn = ini.GetBoolValue("Factions", "bEnableForsworn", true);
             EnableDraugr = ini.GetBoolValue("Factions", "bEnableDraugr", true);
+            EnableAnimals = ini.GetBoolValue("Factions", "bEnableAnimals", true);
+            EnableFalmer = ini.GetBoolValue("Factions", "bEnableFalmer", true);
+            EnableDwemer = ini.GetBoolValue("Factions", "bEnableDwemer", true);
 
             // FormIDs
             FormID_Bandit = ini.GetValue("FormIDs", "sBandit", "0x0001068A");

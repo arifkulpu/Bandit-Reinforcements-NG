@@ -47,6 +47,9 @@ std::vector<RE::TESBoundObject*>& BanditSpawner::GetCacheForFaction(FactionType 
     static std::vector<RE::TESBoundObject*> cacheWarlock;
     static std::vector<RE::TESBoundObject*> cacheForsworn;
     static std::vector<RE::TESBoundObject*> cacheDraugr;
+    static std::vector<RE::TESBoundObject*> cacheAnimal;
+    static std::vector<RE::TESBoundObject*> cacheFalmer;
+    static std::vector<RE::TESBoundObject*> cacheDwemer;
     static std::vector<RE::TESBoundObject*> cacheUnknown;
 
     switch (faction) {
@@ -55,6 +58,9 @@ std::vector<RE::TESBoundObject*>& BanditSpawner::GetCacheForFaction(FactionType 
         case FactionType::Warlock:  return cacheWarlock;
         case FactionType::Forsworn: return cacheForsworn;
         case FactionType::Draugr:   return cacheDraugr;
+        case FactionType::Animal:   return cacheAnimal;
+        case FactionType::Falmer:   return cacheFalmer;
+        case FactionType::Dwemer:   return cacheDwemer;
         default:                    return cacheUnknown;
     }
 }
@@ -91,6 +97,9 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                 else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
                 else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true; // WarlockFaction
                 else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true; // DraugrFaction
+                else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true; // Predator/Spider
+                else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true; // FalmerFaction
+                else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true; // AutomatonFaction
             }
             return false;
         });
@@ -99,7 +108,9 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         if (!isCorrectFaction) {
             auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794); // ActorTypeNPC
             bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
-            if (faction == FactionType::Draugr) isNPC = true; // Draugr'lar NPC degildir (Creature)
+            if (faction == FactionType::Draugr || faction == FactionType::Animal || faction == FactionType::Dwemer) {
+                isNPC = true; // Bunlar Creature'dır
+            }
 
             if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
                 isCorrectFaction = true;
@@ -141,33 +152,39 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
 // ── Spawn count based on player level ────────────────────────────
 int BanditSpawner::GetSpawnCount() {
     auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return 1;
+    if (!player) return 0;
 
     int pLevel = player->GetLevel();
-    int maxSpawns = Settings::MaxSpawnsLevel1_10;
-    if (pLevel >= 25)      maxSpawns = Settings::MaxSpawnsLevel25Plus;
-    else if (pLevel >= 10) maxSpawns = Settings::MaxSpawnsLevel10_25;
+    if (pLevel < 10) return 0; // Lvl 1-9 hic spawn yok
+
+    int maxSpawns = Settings::MaxSpawnsLevel10_24;
+    if (pLevel >= 50)      maxSpawns = Settings::MaxSpawnsLevel50Plus;
+    else if (pLevel >= 25) maxSpawns = Settings::MaxSpawnsLevel25_49;
 
     if (maxSpawns < 1) maxSpawns = 1;
     std::uniform_int_distribution<> dist(1, maxSpawns);
     return dist(GetRNG());
 }
 
+int GetBossChance(int pLevel) {
+    if (pLevel < 10) return 0;
+    if (pLevel >= 50) return Settings::BossChanceLevel50Plus;
+    if (pLevel >= 25) return Settings::BossChanceLevel25_49;
+    return Settings::BossChanceLevel10_24;
+}
+
 // ── Map faction → leveled list EditorID ──────────────────────────
 const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBoss) {
     switch (faction) {
-        case FactionType::Bandit:
-            return isBoss ? "LCharBanditBoss" : "LCharBanditAny";
-        case FactionType::Vampire:
-            return isBoss ? "LCharVampireBoss" : "LCharVampire";
-        case FactionType::Warlock:
-            return isBoss ? "LCharWarlockBoss" : "LCharWarlockAny";
-        case FactionType::Forsworn:
-            return isBoss ? "LCharForswornBoss" : "LCharForswornAny";
-        case FactionType::Draugr:
-            return isBoss ? "LCharDraugrBoss" : "LCharDraugrAny";
-        default:
-            return isBoss ? "LCharBanditBoss" : "LCharBanditAny";
+        case FactionType::Bandit:   return isBoss ? "LCharBanditBoss" : "LCharBanditAny";
+        case FactionType::Vampire:  return isBoss ? "LCharVampireBoss" : "LCharVampire";
+        case FactionType::Warlock:  return isBoss ? "LCharWarlockBoss" : "LCharWarlock";
+        case FactionType::Forsworn: return isBoss ? "LCharForswornBoss" : "LCharForsworn";
+        case FactionType::Draugr:   return isBoss ? "LCharDraugrBoss" : "LCharDraugrMeleeAny";
+        case FactionType::Animal:   return "LCharAnimalPredator"; // Default generic
+        case FactionType::Falmer:   return isBoss ? "LCharFalmerBoss" : "LCharFalmerAny";
+        case FactionType::Dwemer:   return "LCharDwarvenAutomatonMelee";
+        default:                    return "LCharBanditAny";
     }
 }
 
@@ -188,6 +205,9 @@ static RE::TESBoundObject* LookupLeveledList(const char* editorID, FactionType f
         case FactionType::Warlock:  formIdStr = isBoss ? Settings::FormID_WarlockBoss : Settings::FormID_Warlock; break;
         case FactionType::Forsworn: formIdStr = isBoss ? Settings::FormID_ForswornBoss : Settings::FormID_Forsworn; break;
         case FactionType::Draugr:   formIdStr = isBoss ? Settings::FormID_DraugrBoss : Settings::FormID_Draugr; break;
+        case FactionType::Animal:   formIdStr = "0x0001007E"; break; // LCharAnimalPredator
+        case FactionType::Falmer:   formIdStr = isBoss ? "0x000130FA" : "0x000130F9"; break; // Generic Falmer
+        case FactionType::Dwemer:   formIdStr = "0x000130F7"; break; // Generic Automaton
         default:                    formIdStr = isBoss ? Settings::FormID_BanditBoss : Settings::FormID_Bandit; break;
     }
 
@@ -245,6 +265,11 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     auto kwdForsworn = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeForswornCamp");
     auto kwdDraugr   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDraugrCrypt");
     auto kwdDungeon  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDungeon");
+    
+    // YENI FRAKSIYONLAR
+    auto kwdAnimal = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeAnimalDen");
+    auto kwdFalmer = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeFalmerHive");
+    auto kwdDwemer = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDwarvenRuin");
 
     // FormID fallbacks
     if (!kwdBandit)   kwdBandit   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000171DF);
@@ -253,19 +278,14 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (!kwdForsworn) kwdForsworn = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D5);
     if (!kwdDraugr)   kwdDraugr   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D2);
     if (!kwdDungeon)  kwdDungeon  = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0E);
+    
+    if (!kwdAnimal) kwdAnimal = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0C);
+    if (!kwdFalmer) kwdFalmer = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D4);
+    if (!kwdDwemer) kwdDwemer = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D3);
 
     if (Settings::EnableLogging) {
         SKSE::log::info("  GetFactionFromLocation: loc=0x{:08X}", loc->GetFormID());
-        SKSE::log::info("    kwdBandit={}, kwdVampire={}, kwdWarlock={}, kwdForsworn={}, kwdDraugr={}, kwdDungeon={}",
-            kwdBandit != nullptr, kwdVampire != nullptr, kwdWarlock != nullptr,
-            kwdForsworn != nullptr, kwdDraugr != nullptr, kwdDungeon != nullptr);
-        SKSE::log::info("    hasBandit={}, hasVampire={}, hasWarlock={}, hasForsworn={}, hasDraugr={}, hasDungeon={}",
-            kwdBandit ? loc->HasKeyword(kwdBandit) : false,
-            kwdVampire ? loc->HasKeyword(kwdVampire) : false,
-            kwdWarlock ? loc->HasKeyword(kwdWarlock) : false,
-            kwdForsworn ? loc->HasKeyword(kwdForsworn) : false,
-            kwdDraugr ? loc->HasKeyword(kwdDraugr) : false,
-            kwdDungeon ? loc->HasKeyword(kwdDungeon) : false);
+        // loglamayı kısaltalım ki kalabalık yapmasın
     }
 
     if (kwdBandit   && loc->HasKeyword(kwdBandit)   && Settings::EnableBandits)   return FactionType::Bandit;
@@ -273,6 +293,9 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (kwdVampire  && loc->HasKeyword(kwdVampire)  && Settings::EnableVampires)  return FactionType::Vampire;
     if (kwdWarlock  && loc->HasKeyword(kwdWarlock)  && Settings::EnableWarlocks)  return FactionType::Warlock;
     if (kwdDraugr   && loc->HasKeyword(kwdDraugr)   && Settings::EnableDraugr)    return FactionType::Draugr;
+    if (kwdAnimal   && loc->HasKeyword(kwdAnimal)   && Settings::EnableAnimals)   return FactionType::Animal;
+    if (kwdFalmer   && loc->HasKeyword(kwdFalmer)   && Settings::EnableFalmer)    return FactionType::Falmer;
+    if (kwdDwemer   && loc->HasKeyword(kwdDwemer)   && Settings::EnableDwemer)    return FactionType::Dwemer;
     if (kwdDungeon  && loc->HasKeyword(kwdDungeon)  && Settings::EnableBandits)   return FactionType::Bandit;
 
     return FactionType::Unknown;
@@ -392,11 +415,12 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     // Boss spawn kontrolü
     bool shouldSpawnBoss = false;
     int pLevel = player->GetLevel();
-    if (pLevel >= Settings::BossMinPlayerLevel) {
+    int bossChance = GetBossChance(pLevel);
+    if (bossChance > 0) {
         std::uniform_int_distribution<> bossDist(1, 100);
-        if (bossDist(rng) <= Settings::BossSpawnChance) {
+        if (bossDist(rng) <= bossChance) {
             shouldSpawnBoss = true;
-            SKSE::log::info("  >> BOSS SPAWN triggered! (player level={})", pLevel);
+            SKSE::log::info("  >> BOSS SPAWN triggered! (chance={}%, player level={})", bossChance, pLevel);
         }
     }
 
@@ -420,6 +444,9 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
                     else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
                     else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
                     else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
+                    else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true;
+                    else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
+                    else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
                 }
                 return false;
             });
@@ -427,7 +454,9 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
             if (!isCorrectFaction) {
                 auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794);
                 bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
-                if (faction == FactionType::Draugr) isNPC = true;
+                if (faction == FactionType::Draugr || faction == FactionType::Animal || faction == FactionType::Dwemer) {
+                    isNPC = true;
+                }
 
                 if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
                     isCorrectFaction = true;
@@ -487,6 +516,12 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return result;
 
+    int pLevel = player->GetLevel();
+    if (pLevel < 10) {
+        SKSE::log::info("SpawnAmbush: SKIPPED (player level < 10)");
+        return result;
+    }
+
     auto& rng = GetRNG();
 
     std::uniform_int_distribution<> chanceDist(1, 100);
@@ -501,16 +536,31 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     std::uniform_int_distribution<> countDist(minC, maxC);
     int count = countDist(rng);
 
+    // Boss kontrolü
+    bool shouldSpawnBoss = false;
+    int bossChance = GetBossChance(pLevel);
+    if (bossChance > 0) {
+        std::uniform_int_distribution<> bossDist(1, 100);
+        if (bossDist(rng) <= bossChance) {
+            shouldSpawnBoss = true;
+        }
+    }
+
     // Mesafeyi pusu tipine göre seç
     float ambushDist = isOutdoorCamp ? Settings::AmbushCampSpawnDistance : Settings::AmbushSpawnDistance;
 
     SKSE::log::info("=== SpawnAmbush ===");
     SKSE::log::info("  AMBUSH! count={}, faction={}, roll={}%, type={}, dist={:.0f}",
                    count, static_cast<int>(faction), roll, isOutdoorCamp ? "CAMP" : "DUNGEON", ambushDist);
+    if (shouldSpawnBoss) {
+        SKSE::log::info("  >> BOSS SPAWN triggered! (chance={}%, player level={})", bossChance, pLevel);
+    }
 
     float playerAngle = player->GetAngleZ();
 
     for (int i = 0; i < count; ++i) {
+        bool isBoss = (shouldSpawnBoss && i == 0);
+
         // Oyuncunun önünde 120 derecelik bir yarım dairede yayıl
         std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);  // ±60 derece
         
@@ -525,7 +575,7 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
         float offsetX = radius * std::cos(angle);
         float offsetY = radius * std::sin(angle);
 
-        auto handle = SpawnSingleActor(player, faction, false, offsetX, offsetY);
+        auto handle = SpawnSingleActor(player, faction, isBoss, offsetX, offsetY);
         if (handle) {
             result.spawnedActors.push_back(handle);
         }

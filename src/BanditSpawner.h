@@ -5,13 +5,15 @@
 #include <string>
 #include <random>
 
-// Supported faction types
 enum class FactionType {
     Bandit,
     Vampire,
     Warlock,
     Forsworn,
     Draugr,
+    Animal,
+    Falmer,
+    Dwemer,
     Unknown
 };
 

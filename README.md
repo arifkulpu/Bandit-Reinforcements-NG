@@ -21,20 +21,27 @@ Sadece haydutlarla sınırlı değil! Girdiğiniz mekanın türüne göre uygun 
 - **Büyücüler/Necromancer'lar** (Warlock Sığınakları)
 - **Forsworn / Yeminliler** (Reach Bölgesi Kampları)
 - **Draugr / İskeletler** (Draugr Mezar Odaları)
+- **Örümcekler ve Yırtıcı Hayvanlar** (Hayvan İnleri)
+- **Falmerlar** (Falmer Kovanları)
+- **Dwemer Makinaları** (Cüce Harabeleri)
 
-Her fraksiyon INI dosyasından ayrı ayrı aktif/pasif yapılabilir.
+Her fraksiyon INI dosyasından ayrı ayrı aktif/pasif yapılabilir. Kapatılan yaratık türleri için zindanlarda fazladan asker doğmaz.
 
 #### ⚔️ Takviye Liderleri (Boss Spawns)
-Oyuncu belli bir seviyeyi geçtiğinde (varsayılan: Seviye 10), doğan gruptaki düşmanlardan birinin **Boss** (Haydut Şefi, Vampir Lordu vb.) olma şansı vardır. Boss doğma olasılığı INI dosyasından ayarlanabilir (varsayılan: %15).
+Gelen grupların arasında bir Lider (Boss) bulunma ihtimali, oyuncu seviyesine göre artar:
+- Seviye 10–24: %20 Boss çıkma ihtimali.
+- Seviye 25–49: %30 Boss çıkma ihtimali.
+- Seviye 50+: %40 Boss çıkma ihtimali.
 
 #### 🏹 Pusu Mekaniği (Dungeon Ambushes)
-Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir **pusu/intikam grubu** doğabilir. Bu grup, zindandaki fraksiyon türüne uygun düşmanlardan oluşur ve oyuncunun bakış yönünde bir yarım daire içinde belirir. Pusu şansı INI dosyasından ayarlanabilir (varsayılan: %30).
+Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir **pusu/intikam grubu** doğabilir. Bu pusular zindandan dışarı adım attığınız anda doğrudan **çok yakınınızda** (150-300 birim) belirerek sürpriz yaparlar! Açık dünya kamplarından ayrılırken ise uzaktan koşarak gelirler. Pusu şansı INI dosyasından ayarlanabilir (varsayılan: %30).
 
 #### 📊 Seviye Ölçeklendirmesi
-Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir:
-- Seviye 1–10: Maksimum 3
-- Seviye 10–25: Maksimum 6
-- Seviye 25+: Maksimum 10
+Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir (Seviye 10 altındayken fazladan düşman/pusu asla çıkmaz):
+- Seviye 1–9: Ekstra düşman çıkmaz (Sıfır takviye).
+- Seviye 10–24: 1 ile 5 arası takviye.
+- Seviye 25–49: 1 ile 10 arası takviye.
+- Seviye 50+: 1 ile 15 arası takviye.
 
 #### ⚡ Performans Dostu (Zero-Overhead)
 Sistem arkada sürekli bir "Update" döngüsü çalıştırmaz. Sadece oyuncu yeni bir hücreye (Cell) girdiğinde durumu kontrol eder (**Lazy Evaluation**). Bu sayede FPS düşüşü yaşanmaz.
@@ -51,12 +58,13 @@ Tüm ayarlar `BanditReinforcementsNG.ini` dosyasından özelleştirilebilir:
 - Cooldown süreleri
 - Fraksiyon açma/kapama
 
-#### 🤝 Mod Uyumluluğu
-Mod, oyunun orijinal (Vanilla) **Leveled List** sistemini kullandığı için aşağıdaki modlarla **otomatik olarak %100 uyumludur** — ekstra yama gerekmez:
+#### 🤝 Mod Uyumluluğu ve "Dinamik Kopyalama"
+Mod artık **Dinamik Kopyalama Sistemi (Dynamic Cache)** ile çalışıyor. Bir mekana girdiğinizde içerideki düşmanları sessizce tarar ve onların sınıf özelliklerini (okçu, büyücü vb.) hafızasına alır. Doğurduğu takviyeler bizzat zindandaki mevcut düşmanların birebir kopyaları olur!
 - **OBIS** (Organized Bandits In Skyrim)
 - **Lawless** (A Bandit Overhaul)
 - **SPID** (Spell Perk Item Distributor)
-- Bu modlar Skyrim'in Leveled List'lerini değiştirdiğinde, Bandit Reinforcements NG otomatik olarak bu yeni düşman tiplerini doğurur.
+- Bu modlarla **otomatik olarak %100 uyumludur**. Takviyeler doğrudan bu modların kendine has kıyafetlerine/isimlerine sahip düşmanlar olarak doğar!
+- Zindan içerisinde doğan takviyeler doğrudan diğer düşmanların hemen **dibinde/yanında** belirir (rastgele saçılmak yerine onlarla grup olurlar).
 
 ### Kurulum
 1. [SKSE](http://skse.silverlock.org/)'nin sürümünüze uygun versiyonunun kurulu olduğundan emin olun.
@@ -86,20 +94,27 @@ Not limited to bandits! The mod automatically selects the appropriate enemy type
 - **Warlocks/Necromancers** (Warlock Dens)
 - **Forsworn** (Reach Region Camps)
 - **Draugr/Skeletons** (Draugr Crypts)
+- **Spiders & Animals** (Animal Dens)
+- **Falmer** (Falmer Hives)
+- **Dwemer Automatons** (Dwarven Ruins)
 
-Each faction can be individually enabled/disabled via the INI file.
+Each faction can be individually enabled/disabled via the INI file. Disabled factions will not trigger extra spawns.
 
 #### ⚔️ Boss Spawns
-When the player reaches a certain level (default: Level 10), there is a chance one of the spawned enemies will be a **Boss** (Bandit Chief, Vampire Lord, etc.). Boss spawn probability is configurable via INI (default: 15%).
+The chance of an enemy in the group being a **Boss** (Bandit Chief, Vampire Lord, etc.) scales with player level:
+- Levels 10–24: 20% Boss chance.
+- Levels 25–49: 30% Boss chance.
+- Levels 50+: 40% Boss chance.
 
 #### 🏹 Dungeon Ambushes
-After clearing a dungeon and exiting, a **revenge/ambush group** may spawn at the entrance. This group matches the dungeon's faction type and appears in a semicircle facing the player. Ambush chance is configurable (default: 30%).
+After clearing a dungeon and exiting, a **revenge/ambush group** may spawn at the entrance. Dungeon exit ambushes spawn **extremely close** to the player (150-300 units) for a surprise jump! Outdoor camp ambushes will still run towards you from a distance. Ambush chance is configurable (default: 30%).
 
 #### 📊 Level Scaling
-Maximum extra enemies scale with player level:
-- Levels 1–10: Max 3
-- Levels 10–25: Max 6
-- Levels 25+: Max 10
+Maximum extra enemies strictly scale with player level (no spawns under level 10):
+- Levels 1–9: No extra spawns (Zero reinforcements).
+- Levels 10–24: 1 to 5 extra enemies.
+- Levels 25–49: 1 to 10 extra enemies.
+- Levels 50+: 1 to 15 extra enemies.
 
 #### ⚡ Performance Friendly (Zero-Overhead)
 The mod uses **Lazy Evaluation** — no constant background update loop. Logic only runs when the player enters a new cell. Zero FPS impact.
@@ -116,12 +131,13 @@ All settings are customizable via `BanditReinforcementsNG.ini`:
 - Cooldown durations
 - Per-faction enable/disable toggles
 
-#### 🤝 Mod Compatibility
-The mod uses Skyrim's native (Vanilla) **Leveled List** system, making it **automatically 100% compatible** with the following mods — no patches needed:
+#### 🤝 Mod Compatibility & "Dynamic Cache"
+The mod now uses a **Dynamic Caching System**. When you enter a dungeon, it silently scans the existing enemies (archers, mages, bruisers) and memorizes them. The reinforcements it spawns are **perfect copies** of the enemies already present in the dungeon!
 - **OBIS** (Organized Bandits In Skyrim)
 - **Lawless** (A Bandit Overhaul)
 - **SPID** (Spell Perk Item Distributor)
-- When these mods modify Skyrim's Leveled Lists, Bandit Reinforcements NG will automatically spawn their custom enemy types.
+- It is **100% automatically compatible** with these mods out of the box! Reinforcements will spawn wearing the exact custom armors and names from your overhauls.
+- Reinforcements spawned inside dungeons will cluster **directly next to existing enemies** rather than spawning randomly at the entrance.
 
 ### Installation
 1. Ensure you have the appropriate version of [SKSE](http://skse.silverlock.org/) installed.
