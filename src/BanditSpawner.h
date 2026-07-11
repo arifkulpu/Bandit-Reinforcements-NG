@@ -39,6 +39,9 @@ public:
     // Post-spawn AI fix: called on game thread with a delay, waits for 3D
     static void FixActorAI(RE::ObjectRefHandle handle, int retries = 0);
 
+    // Dump all leveled list FormIDs to the log (call during kDataLoaded)
+    static void DumpLeveledLists();
+
 private:
     static int GetSpawnCount();
     static std::mt19937& GetRNG();

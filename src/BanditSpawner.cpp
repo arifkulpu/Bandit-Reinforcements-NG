@@ -14,6 +14,32 @@ std::mt19937& BanditSpawner::GetRNG() {
     return rng;
 }
 
+void BanditSpawner::DumpLeveledLists() {
+    if (!Settings::EnableLogging) return;
+    
+    auto dataHandler = RE::TESDataHandler::GetSingleton();
+    if (!dataHandler) return;
+
+    SKSE::log::info("=== DUMPING ALL RELEVANT LEVELED LISTS ===");
+    for (auto form : dataHandler->GetFormArray<RE::TESLevCharacter>()) {
+        if (!form) continue;
+        const char* eid = form->GetFormEditorID();
+        if (!eid) continue;
+        
+        std::string editorID(eid);
+        // Sadece Bandit, Vampire, Warlock, Forsworn, Draugr kelimelerini içerenleri logla
+        if (editorID.find("Bandit") != std::string::npos ||
+            editorID.find("Vampire") != std::string::npos ||
+            editorID.find("Warlock") != std::string::npos ||
+            editorID.find("Forsworn") != std::string::npos ||
+            editorID.find("Draugr") != std::string::npos) 
+        {
+            SKSE::log::info("  Found LvlList: '{}' -> FormID: 0x{:08X}", editorID, form->GetFormID());
+        }
+    }
+    SKSE::log::info("=== DUMP FINISHED ===");
+}
+
 // ── Spawn count based on player level ────────────────────────────
 int BanditSpawner::GetSpawnCount() {
     auto player = RE::PlayerCharacter::GetSingleton();

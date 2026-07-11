@@ -5,9 +5,22 @@
 
 extern "C" void __std_regex_transform_primary_char() {}
 
+#include "BanditSpawner.h"
+
+void OnMessage(SKSE::MessagingInterface::Message* message) {
+    if (message->type == SKSE::MessagingInterface::kDataLoaded) {
+        BanditSpawner::DumpLeveledLists();
+    }
+}
+
 void InitListener() {
     LocationEventSink::GetSingleton()->Register();
     SKSE::log::info("Location event listener initialized.");
+    
+    auto messaging = SKSE::GetMessagingInterface();
+    if (messaging) {
+        messaging->RegisterListener(OnMessage);
+    }
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse) {
