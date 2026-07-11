@@ -307,49 +307,42 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
 }
 
 // ── Post-spawn AI fix (called on game thread via TaskInterface) ───
-// Skyrim'de PlaceObjectAtMe sonrası aktör tam yüklenmeden SetPosition/EvaluatePackage
-// çağrılırsa animasyon glitch ve T-pose oluşur.
-// Bu fonksiyon bir sonraki frame'de game thread'inde çalışarak aktörü düzgün başlatır.
-void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, int retries) {
+// ── Post-spawn AI fix + pozisyon taşıma ─────────────────────────
+// PlaceObjectAtMe sonrası 3D yüklenene kadar bekle, sonra konuma taşı ve AI başlat.
+void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPos, int retries) {
     auto taskInterface = SKSE::GetTaskInterface();
     if (!taskInterface) return;
 
-    taskInterface->AddTask([handle, retries]() {
+    taskInterface->AddTask([handle, targetPos, retries]() {
         auto ref = handle.get();
         if (!ref) return;
 
         auto actor = ref->As<RE::Actor>();
         if (!actor || actor->IsDead()) return;
 
-        // 3D yuklenmesini bekle - ama 300 denemeden sonra yine de devam et
+        // 3D yuklenmesini bekle (max 60 deneme = ~1 saniye)
         if (!actor->Is3DLoaded()) {
-            if (retries < 300) {
-                BanditSpawner::FixActorAI(handle, retries + 1);
+            if (retries < 60) {
+                BanditSpawner::FixActorAI(handle, targetPos, retries + 1);
                 return;
             }
-            // 300 deneme sonrasinda hala 3D yoksa yine de AI'i baslat
             if (Settings::EnableLogging) {
-                SKSE::log::warn("  FixActorAI: 3D never loaded for 0x{:08X}, forcing AI init anyway", actor->GetFormID());
+                SKSE::log::warn("  FixActorAI: 3D not loaded after 60 retries for 0x{:08X}, proceeding anyway",
+                                actor->GetFormID());
             }
         }
 
-        auto player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return;
+        // 3D yuklendi (veya timeout) - simdi dogru konuma tas
+        actor->SetPosition(targetPos, true); // true = updateCharController
 
-        // 1. Tam aktif hale getir
+        // AI baslat
         actor->MoveToHigh();
-
-        // 2. AI'yi etkinlestir
         actor->EnableAI(true);
-
-        // 3. AI paketini sifirla ve degerlendire
         actor->EvaluatePackage(true, true);
-
-        // 4. Savas durumunu guncelle (oyuncuyu fark etsin)
         actor->UpdateCombat();
 
         if (Settings::EnableLogging) {
-            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI initialized (retries={})", 
+            SKSE::log::info("  FixActorAI: Actor 0x{:08X} positioned & AI initialized (retries={})",
                             actor->GetFormID(), retries);
         }
     });
@@ -362,41 +355,37 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
     auto baseObj = LookupLeveledList(listEditorID, faction, isBoss);
 
     if (!baseObj) {
-        SKSE::log::error("  SPAWN FAILED: No leveled list or cached NPC found for faction={} boss={}", 
+        SKSE::log::error("  SPAWN FAILED: No leveled list or cached NPC found for faction={} boss={}",
                         static_cast<int>(faction), isBoss);
         return RE::ObjectRefHandle();
     }
 
-    // Her zaman player uzerinde spawn et (en guvenli yontem)
-    // Sonra anchor+offset konumuna tasiyacagiz
-    auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return RE::ObjectRefHandle();
-
-    auto spawned = player->PlaceObjectAtMe(baseObj, false);
+    // Anchor uzerinde spawn et (hicbir SetPosition yok - 3D bozulmasin)
+    auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
     if (!spawned) {
         SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null");
         return RE::ObjectRefHandle();
     }
 
-    // Hedef pozisyon: anchor konumu + XY offset, Z = anchor'in Z'si (yer altina gommemek icin)
+    // Hedef pozisyon hesapla: anchor + XY offset, anchor'in Z'si
     RE::NiPoint3 targetPos = anchor->GetPosition();
     targetPos.x += offsetX;
     targetPos.y += offsetY;
-    // Z'yi degistirme: anchor'in yuksekligini koru
-    spawned->SetPosition(targetPos);
+    // Z anchor'dan alinir - yere gommez
 
     auto handle = spawned->GetHandle();
 
     if (Settings::EnableLogging) {
-        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X} Z={:.0f}", 
-                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID(), targetPos.z);
+        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X}",
+                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID());
     }
 
-    // AI fix'i bir sonraki frame'e ertele (animasyon glitch onleme)
-    BanditSpawner::FixActorAI(handle);
+    // 3D yuklenince konuma tas + AI baslat
+    BanditSpawner::FixActorAI(handle, targetPos);
 
     return handle;
 }
+
 
 // ── Main spawn: Reinforcements ───────────────────────────────────
 SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionType faction) {

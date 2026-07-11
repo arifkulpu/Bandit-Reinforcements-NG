@@ -57,11 +57,17 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
                 auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
                 if (faction != FactionType::Unknown) {
                     BanditSpawner::UpdateCache(prevCell, faction);
-                    
+
                     SKSE::log::info("  Zindan pususu tetikleniyor (faction={})", static_cast<int>(faction));
-                    auto ambushResult = BanditSpawner::SpawnAmbush(faction);
-                    if (ambushResult.count > 0) {
-                        SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, ambushResult.spawnedActors);
+
+                    auto taskInterface = SKSE::GetTaskInterface();
+                    if (taskInterface) {
+                        taskInterface->AddTask([currentCellID, faction]() {
+                            auto ambushResult = BanditSpawner::SpawnAmbush(faction, false); // zindan cikisi
+                            if (ambushResult.count > 0) {
+                                SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, ambushResult.spawnedActors);
+                            }
+                        });
                     }
                 }
             }
@@ -106,20 +112,20 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
                 BanditSpawner::UpdateCache(player->GetParentCell(), oldFaction);
             }
 
-            auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction, true); // isOutdoorCamp=true → 1500 birim mesafe
-            if (ambushResult.count > 0) {
-                auto taskInterface = SKSE::GetTaskInterface();
-                if (taskInterface) {
-                    auto handles = ambushResult.spawnedActors;
-                    taskInterface->AddTask([handles]() {
-                        auto p = RE::PlayerCharacter::GetSingleton();
-                        if (!p) return;
+            auto taskInterface = SKSE::GetTaskInterface();
+            if (taskInterface) {
+                taskInterface->AddTask([oldFaction]() {
+                    auto p = RE::PlayerCharacter::GetSingleton();
+                    if (!p) return;
+
+                    auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction, true); // kamp terkinde uzak mesafe
+                    if (ambushResult.count > 0) {
                         auto trackID = p->GetParentCell() ? p->GetParentCell()->GetFormID() : 0;
                         if (trackID != 0) {
-                            SpawnTracker::GetSingleton()->RegisterSpawn(trackID, handles);
+                            SpawnTracker::GetSingleton()->RegisterSpawn(trackID, ambushResult.spawnedActors);
                         }
-                    });
-                }
+                    }
+                });
             }
         }
     }

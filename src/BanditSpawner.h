@@ -38,8 +38,8 @@ public:
     // Get the EditorID of the leveled character list for a faction
     static const char* GetLeveledListEditorID(FactionType faction, bool isBoss);
 
-    // Post-spawn AI fix: called on game thread with a delay, waits for 3D
-    static void FixActorAI(RE::ObjectRefHandle handle, int retries = 0);
+    // Post-spawn: 3D yuklendikten sonra konuma taşı ve AI başlat
+    static void FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPos, int retries = 0);
 
     // Dump all leveled list FormIDs to the log (call during kDataLoaded)
     static void DumpLeveledLists();
