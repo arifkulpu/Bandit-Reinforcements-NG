@@ -25,8 +25,10 @@ public:
     // Spawn reinforcements for a given faction at the player's location
     static SpawnResult SpawnReinforcements(RE::TESObjectCELL* cell, FactionType faction);
 
-    // Spawn an ambush group near the player (used on dungeon exit)
-    static SpawnResult SpawnAmbush(FactionType faction);
+    // Spawn an ambush group near the player
+    // isOutdoorCamp=true  → uzak mesafe (AmbushCampSpawnDistance, ~1500 birim)
+    // isOutdoorCamp=false → yakin mesafe (AmbushSpawnDistance, ~500 birim, zindan cikisi)
+    static SpawnResult SpawnAmbush(FactionType faction, bool isOutdoorCamp = false);
 
     // Determine faction type from a BGSLocation's keywords
     static FactionType GetFactionFromLocation(RE::BGSLocation* loc);

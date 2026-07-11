@@ -100,7 +100,7 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
             SKSE::log::info(">> CAMP LEAVE DETECTED! OldLoc=0x{:08X} (faction={})", 
                            oldLoc->GetFormID(), static_cast<int>(oldFaction));
             
-            auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction);
+            auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction, true); // isOutdoorCamp=true → 1500 birim mesafe
             if (ambushResult.count > 0) {
                 auto taskInterface = SKSE::GetTaskInterface();
                 if (taskInterface) {

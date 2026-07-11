@@ -23,7 +23,8 @@ namespace Settings {
     inline int AmbushChance = 30;
     inline int AmbushMinCount = 2;
     inline int AmbushMaxCount = 5;
-    inline float AmbushSpawnDistance = 500.0f;
+    inline float AmbushSpawnDistance = 500.0f;       // Zindan çıkışı pususu (yakın)
+    inline float AmbushCampSpawnDistance = 1500.0f;  // Açık dünya kamp terk pususu (uzak)
 
     // Cooldown
     inline float ClearedCooldownDays = 10.0f;
@@ -68,7 +69,9 @@ namespace Settings {
             "; Pusu grubundaki min/max dusman / Min and max enemies in ambush group");
         ini.SetLongValue("Ambush", "iAmbushMaxCount", 5);
         ini.SetDoubleValue("Ambush", "fAmbushSpawnDistance", 500.0,
-            "; Pusu dogus mesafesi (oyun birimi) / Ambush spawn distance (game units)");
+            "; Zindan cikisinda pusu mesafesi (oyun birimi, ~7m) / Dungeon exit ambush distance (game units)");
+        ini.SetDoubleValue("Ambush", "fAmbushCampSpawnDistance", 1500.0,
+            "; Acik dunya kampi terkinde pusu mesafesi (oyun birimi, ~21m) / Outdoor camp ambush distance (game units)");
 
         // Cooldown
         ini.SetDoubleValue("Cooldown", "fClearedCooldownDays", 10.0,
@@ -115,6 +118,7 @@ namespace Settings {
             AmbushMinCount = static_cast<int>(ini.GetLongValue("Ambush", "iAmbushMinCount", 2));
             AmbushMaxCount = static_cast<int>(ini.GetLongValue("Ambush", "iAmbushMaxCount", 5));
             AmbushSpawnDistance = static_cast<float>(ini.GetDoubleValue("Ambush", "fAmbushSpawnDistance", 500.0));
+            AmbushCampSpawnDistance = static_cast<float>(ini.GetDoubleValue("Ambush", "fAmbushCampSpawnDistance", 1500.0));
 
             // Cooldown
             ClearedCooldownDays = static_cast<float>(ini.GetDoubleValue("Cooldown", "fClearedCooldownDays", 10.0));

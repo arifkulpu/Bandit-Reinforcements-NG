@@ -283,15 +283,16 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     return result;
 }
 
-// ── Ambush spawn (dungeon exit) ──────────────────────────────────
-SpawnResult BanditSpawner::SpawnAmbush(FactionType faction) {
+// ── Ambush spawn ─────────────────────────────────────────────────
+// isOutdoorCamp=false → zindan cikisi pususu (AmbushSpawnDistance ~500 birim, yakin)
+// isOutdoorCamp=true  → acik dunya kamp terk pususu (AmbushCampSpawnDistance ~1500 birim, uzak)
+SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) {
     SpawnResult result{ {}, 0 };
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return result;
 
     auto& rng = GetRNG();
 
-    // Şans kontrolü
     std::uniform_int_distribution<> chanceDist(1, 100);
     int roll = chanceDist(rng);
     if (roll > Settings::AmbushChance) {
@@ -304,10 +305,13 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction) {
     std::uniform_int_distribution<> countDist(minC, maxC);
     int count = countDist(rng);
 
-    SKSE::log::info("=== SpawnAmbush ===");
-    SKSE::log::info("  AMBUSH! count={}, faction={}, roll={}%", count, static_cast<int>(faction), roll);
+    // Mesafeyi pusu tipine göre seç
+    float ambushDist = isOutdoorCamp ? Settings::AmbushCampSpawnDistance : Settings::AmbushSpawnDistance;
 
-    float ambushDist = Settings::AmbushSpawnDistance;
+    SKSE::log::info("=== SpawnAmbush ===");
+    SKSE::log::info("  AMBUSH! count={}, faction={}, roll={}%, type={}, dist={:.0f}",
+                   count, static_cast<int>(faction), roll, isOutdoorCamp ? "CAMP" : "DUNGEON", ambushDist);
+
     float playerAngle = player->GetAngleZ();
 
     for (int i = 0; i < count; ++i) {
