@@ -28,10 +28,10 @@ Sadece haydutlarla sınırlı değil! Girdiğiniz mekanın türüne göre uygun 
 Her fraksiyon INI dosyasından ayrı ayrı aktif/pasif yapılabilir. Kapatılan yaratık türleri için zindanlarda fazladan asker doğmaz.
 
 #### ⚔️ Takviye Liderleri (Boss Spawns)
-Gelen grupların arasında bir Lider (Boss) bulunma ihtimali, oyuncu seviyesine göre artar:
-- Seviye 10–24: %20 Boss çıkma ihtimali.
-- Seviye 25–49: %30 Boss çıkma ihtimali.
-- Seviye 50+: %40 Boss çıkma ihtimali.
+Gelen grupların arasında bir Lider (Boss) bulunması oyuncu seviyesine göre değişir:
+- **Seviye 10–24:** %20 ihtimalle 1 Boss çıkar (garanti yok).
+- **Seviye 25–49:** 1 Boss **garanti** doğar + %30 ihtimalle 2. Boss da çıkar.
+- **Seviye 50+:** 2 Boss **garanti** doğar + %40 ihtimalle 3. Boss da çıkar.
 
 #### 🏹 Pusu Mekaniği (Dungeon Ambushes)
 Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir **pusu/intikam grubu** doğabilir. Bu pusular zindandan dışarı adım attığınız anda doğrudan **çok yakınınızda** (150-300 birim) belirerek sürpriz yaparlar! Açık dünya kamplarından ayrılırken ise uzaktan koşarak gelirler. Pusu şansı INI dosyasından ayarlanabilir (varsayılan: %30).
@@ -101,10 +101,10 @@ Not limited to bandits! The mod automatically selects the appropriate enemy type
 Each faction can be individually enabled/disabled via the INI file. Disabled factions will not trigger extra spawns.
 
 #### ⚔️ Boss Spawns
-The chance of an enemy in the group being a **Boss** (Bandit Chief, Vampire Lord, etc.) scales with player level:
-- Levels 10–24: 20% Boss chance.
-- Levels 25–49: 30% Boss chance.
-- Levels 50+: 40% Boss chance.
+The chance and number of **Bosses** (Bandit Chief, Vampire Lord, etc.) in a group scales with player level:
+- **Levels 10–24:** 20% chance for 1 Boss (no guarantee).
+- **Levels 25–49:** 1 Boss **guaranteed** + 30% chance for a 2nd Boss.
+- **Levels 50+:** 2 Bosses **guaranteed** + 40% chance for a 3rd Boss.
 
 #### 🏹 Dungeon Ambushes
 After clearing a dungeon and exiting, a **revenge/ambush group** may spawn at the entrance. Dungeon exit ambushes spawn **extremely close** to the player (150-300 units) for a surprise jump! Outdoor camp ambushes will still run towards you from a distance. Ambush chance is configurable (default: 30%).

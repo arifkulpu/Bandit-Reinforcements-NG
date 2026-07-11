@@ -166,11 +166,16 @@ int BanditSpawner::GetSpawnCount() {
     return dist(GetRNG());
 }
 
-int GetBossChance(int pLevel) {
-    if (pLevel < 10) return 0;
-    if (pLevel >= 50) return Settings::BossChanceLevel50Plus;
-    if (pLevel >= 25) return Settings::BossChanceLevel25_49;
-    return Settings::BossChanceLevel10_24;
+struct BossSpawnInfo {
+    int guaranteed; // Garanti boss sayisi
+    int extraChance; // Ek boss icin yuzde sans (0-100)
+};
+
+BossSpawnInfo GetBossSpawnInfo(int pLevel) {
+    if (pLevel < 10)   return {0, 0};
+    if (pLevel >= 50)  return {2, Settings::BossChanceLevel50Plus};  // 2 garanti + %40 sans
+    if (pLevel >= 25)  return {1, Settings::BossChanceLevel25_49};   // 1 garanti + %30 sans
+    return                     {0, Settings::BossChanceLevel10_24};  // 0 garanti + %20 sans
 }
 
 // ── Map faction → leveled list EditorID ──────────────────────────
@@ -412,16 +417,19 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         maxDist = base * 1.3f;
     }
 
-    // Boss spawn kontrolü
-    bool shouldSpawnBoss = false;
+    // Boss spawn kontrolü: garantili + ekstra şans
     int pLevel = player->GetLevel();
-    int bossChance = GetBossChance(pLevel);
-    if (bossChance > 0) {
+    auto bossInfo = GetBossSpawnInfo(pLevel);
+    int totalBossCount = bossInfo.guaranteed;
+    if (bossInfo.extraChance > 0) {
         std::uniform_int_distribution<> bossDist(1, 100);
-        if (bossDist(rng) <= bossChance) {
-            shouldSpawnBoss = true;
-            SKSE::log::info("  >> BOSS SPAWN triggered! (chance={}%, player level={})", bossChance, pLevel);
+        if (bossDist(rng) <= bossInfo.extraChance) {
+            totalBossCount++;
         }
+    }
+    if (totalBossCount > 0) {
+        SKSE::log::info("  >> BOSS SPAWN: {} boss (guaranteed={}, extra_chance={}%, level={})",
+            totalBossCount, bossInfo.guaranteed, bossInfo.extraChance, pLevel);
     }
 
     // Anchor'lari topla: Hucrede halihazirda var olan hedefe ait faction dusmanlari (olu veya diri)
@@ -474,7 +482,7 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     }
 
     for (int i = 0; i < count; ++i) {
-        bool isBoss = (shouldSpawnBoss && i == 0);
+        bool isBoss = (i < totalBossCount);
 
         RE::TESObjectREFR* spawnAnchor = player;
         float currentMinDist = minDist;
@@ -537,12 +545,13 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     int count = countDist(rng);
 
     // Boss kontrolü
-    bool shouldSpawnBoss = false;
-    int bossChance = GetBossChance(pLevel);
-    if (bossChance > 0) {
+    // Boss spawn kontrolü: garantili + ekstra şans
+    auto bossInfo = GetBossSpawnInfo(pLevel);
+    int totalBossCount = bossInfo.guaranteed;
+    if (bossInfo.extraChance > 0) {
         std::uniform_int_distribution<> bossDist(1, 100);
-        if (bossDist(rng) <= bossChance) {
-            shouldSpawnBoss = true;
+        if (bossDist(rng) <= bossInfo.extraChance) {
+            totalBossCount++;
         }
     }
 
@@ -552,14 +561,15 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     SKSE::log::info("=== SpawnAmbush ===");
     SKSE::log::info("  AMBUSH! count={}, faction={}, roll={}%, type={}, dist={:.0f}",
                    count, static_cast<int>(faction), roll, isOutdoorCamp ? "CAMP" : "DUNGEON", ambushDist);
-    if (shouldSpawnBoss) {
-        SKSE::log::info("  >> BOSS SPAWN triggered! (chance={}%, player level={})", bossChance, pLevel);
+    if (totalBossCount > 0) {
+        SKSE::log::info("  >> BOSS: {} adet (guaranteed={}, extra_chance={}%, level={})",
+            totalBossCount, bossInfo.guaranteed, bossInfo.extraChance, pLevel);
     }
 
     float playerAngle = player->GetAngleZ();
 
     for (int i = 0; i < count; ++i) {
-        bool isBoss = (shouldSpawnBoss && i == 0);
+        bool isBoss = (i < totalBossCount);
 
         // Oyuncunun önünde 120 derecelik bir yarım dairede yayıl
         std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);  // ±60 derece
