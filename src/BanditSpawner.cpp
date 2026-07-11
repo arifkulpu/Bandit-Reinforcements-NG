@@ -67,6 +67,10 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return;
 
+    if (Settings::EnableLogging) {
+        SKSE::log::info("  UpdateCache: Scanning {} references in cell 0x{:08X}", cell->GetRuntimeData().references.size(), cell->GetFormID());
+    }
+
     // Sadece uygun keyword/faction'a sahip npc'leri cache'e ekle
     bool added = false;
     for (auto& ref : cell->GetRuntimeData().references) {
@@ -77,8 +81,38 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         auto baseObj = actor->GetActorBase();
         if (!baseObj) continue;
         
-        if (actor->IsHostileToActor(player) || actor->IsDead()) {
-            // Check if already in cache
+        // Faction kontrolü yapalım (Örn: BanditFaction = 0x1BCC0, VampireFaction = 0x27242)
+        bool isCorrectFaction = false;
+        actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
+            if (f) {
+                RE::FormID fID = f->GetFormID();
+                if (faction == FactionType::Bandit && fID == 0x0001BCC0) isCorrectFaction = true;
+                else if (faction == FactionType::Vampire && fID == 0x00027242) isCorrectFaction = true;
+                else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
+                else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true; // WarlockFaction
+                else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true; // DraugrFaction
+            }
+            return false;
+        });
+
+        // Fallback: Eğer faction'u kesin bilemezsek ama NPC ise ve düşmansa/ölüyse kabul et!
+        if (!isCorrectFaction) {
+            auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794); // ActorTypeNPC
+            bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
+            if (faction == FactionType::Draugr) isNPC = true; // Draugr'lar NPC degildir (Creature)
+
+            if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
+                isCorrectFaction = true;
+            }
+        }
+
+        if (Settings::EnableLogging) {
+            SKSE::log::info("    - Found Actor: '{}' (BaseID: 0x{:08X}), isCorrectFaction={}, Dead={}", 
+                baseObj->GetName(), baseObj->GetFormID(), isCorrectFaction, actor->IsDead());
+        }
+
+        if (isCorrectFaction) {
+            // Düşman factionına aitse cache'e ekle
             bool exists = false;
             for (auto* cachedBase : cache) {
                 if (cachedBase == baseObj) {
@@ -89,6 +123,9 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             if (!exists) {
                 cache.push_back(baseObj);
                 added = true;
+                if (Settings::EnableLogging) {
+                    SKSE::log::info("      -> CACHED!");
+                }
                 if (cache.size() > 50) { // Keep bounded
                     cache.erase(cache.begin());
                 }
@@ -176,8 +213,17 @@ static RE::TESBoundObject* LookupLeveledList(const char* editorID, FactionType f
     // YENI: Eğer EditorID ve FormID çökerse (Örn: Lawless modu listeleri silmişse), 
     // etraftaki veya daha önce gördüğümüz aynı tip düşmanların BaseObj'lerini kopyala!
     auto& cache = BanditSpawner::GetCacheForFaction(faction);
+    
+    // Eğer cache boşsa, anlık olarak mevcut hücreyi tekrar tara (çünkü hücre yeni yüklenmiş olabilir)
+    if (cache.empty()) {
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (player && player->GetParentCell()) {
+            BanditSpawner::UpdateCache(player->GetParentCell(), faction);
+        }
+    }
+
     if (!cache.empty()) {
-        std::uniform_int_distribution<> dist(0, cache.size() - 1);
+        std::uniform_int_distribution<> dist(0, (int)cache.size() - 1);
         auto* cachedBase = cache[dist(BanditSpawner::GetRNG())];
         if (cachedBase) {
             SKSE::log::info("  DYNAMIC COPY: Using a cached NPC base object for Faction {} (Total cached: {})", static_cast<int>(faction), cache.size());
