@@ -150,7 +150,7 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, int retries) {
 
         // Skyrim 3D loading is asynchronous. If we evaluate AI before 3D is ready,
         // the actor might glide without playing animations (T-pose or stuck).
-        if (!actor->Is3DLoaded() && retries < 60) { // wait up to 1 second (60 frames)
+        if (!actor->Is3DLoaded() && retries < 300) { // wait up to 5 seconds (300 frames)
             BanditSpawner::FixActorAI(handle, retries + 1);
             return;
         }
@@ -227,14 +227,14 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
 SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionType faction) {
     SpawnResult result{ {}, 0 };
     auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player || !cell) return result;
+    if (!player) return result; // Sadece player null ise dön. Cell null olabilir!
 
     int count = GetSpawnCount();
-    bool isInterior = cell->IsInteriorCell();
+    bool isInterior = cell ? cell->IsInteriorCell() : false;
 
     SKSE::log::info("=== SpawnReinforcements ===");
     SKSE::log::info("  Count={}, Faction={}, Interior={}, Cell=0x{:08X}", 
-                    count, static_cast<int>(faction), isInterior, cell->GetFormID());
+                    count, static_cast<int>(faction), isInterior, cell ? cell->GetFormID() : 0);
 
     auto& rng = GetRNG();
 

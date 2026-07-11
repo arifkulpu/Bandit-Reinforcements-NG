@@ -101,9 +101,24 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
     if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
         SKSE::log::info("  Location READY → spawning reinforcements (faction={})", static_cast<int>(faction));
-        auto spawnResult = BanditSpawner::SpawnReinforcements(player->GetParentCell(), faction);
-        if (spawnResult.count > 0) {
-            SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
+        
+        auto taskInterface = SKSE::GetTaskInterface();
+        if (taskInterface) {
+            taskInterface->AddTask([trackID, faction]() {
+                auto player = RE::PlayerCharacter::GetSingleton();
+                if (!player) return;
+                
+                auto currentCell = player->GetParentCell();
+                if (!currentCell) {
+                    SKSE::log::warn("  Task: Player still has no parent cell. Aborting spawn.");
+                    return;
+                }
+
+                auto spawnResult = BanditSpawner::SpawnReinforcements(currentCell, faction);
+                if (spawnResult.count > 0) {
+                    SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
+                }
+            });
         }
     } else {
         SKSE::log::info("  Location in COOLDOWN or already spawned, skipping.");
