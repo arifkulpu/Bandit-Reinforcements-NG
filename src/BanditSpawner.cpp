@@ -56,35 +56,32 @@ static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction,
         return form;
     }
 
-    // Fallback to vanilla Skyrim.esm FormIDs
-    RE::FormID fallbackID = 0;
+    // Fallback to INI FormIDs
+    std::string formIdStr = "";
     switch (faction) {
-        case FactionType::Bandit:
-            fallbackID = isBoss ? 0x0003DF03 : 0x001068FF;
-            break;
-        case FactionType::Vampire:
-            fallbackID = isBoss ? 0x0009B2C0 : 0x00014B91;
-            break;
-        case FactionType::Warlock:
-            fallbackID = isBoss ? 0x0003DF05 : 0x0010EF01;
-            break;
-        case FactionType::Forsworn:
-            fallbackID = isBoss ? 0x0009B2C6 : 0x00046090;
-            break;
-        case FactionType::Draugr:
-            fallbackID = isBoss ? 0x0003DF01 : 0x0001397E;
-            break;
-        default:
-            fallbackID = isBoss ? 0x0003DF03 : 0x001068FF;
-            break;
+        case FactionType::Bandit:   formIdStr = isBoss ? Settings::FormID_BanditBoss : Settings::FormID_Bandit; break;
+        case FactionType::Vampire:  formIdStr = isBoss ? Settings::FormID_VampireBoss : Settings::FormID_Vampire; break;
+        case FactionType::Warlock:  formIdStr = isBoss ? Settings::FormID_WarlockBoss : Settings::FormID_Warlock; break;
+        case FactionType::Forsworn: formIdStr = isBoss ? Settings::FormID_ForswornBoss : Settings::FormID_Forsworn; break;
+        case FactionType::Draugr:   formIdStr = isBoss ? Settings::FormID_DraugrBoss : Settings::FormID_Draugr; break;
+        default:                    formIdStr = isBoss ? Settings::FormID_BanditBoss : Settings::FormID_Bandit; break;
+    }
+
+    RE::FormID fallbackID = 0;
+    try {
+        if (!formIdStr.empty()) {
+            fallbackID = std::stoul(formIdStr, nullptr, 16);
+        }
+    } catch (...) {
+        SKSE::log::error("  LeveledList FAILED: Invalid FormID string in INI: '{}'", formIdStr);
     }
 
     if (fallbackID != 0) {
         form = RE::TESForm::LookupByID(fallbackID);
         if (form) {
-            SKSE::log::warn("  LeveledList fallback: EditorID '{}' not found, using FormID 0x{:08X}", editorID, fallbackID);
+            SKSE::log::warn("  LeveledList fallback: EditorID '{}' not found, using INI FormID {}", editorID, formIdStr);
         } else {
-            SKSE::log::error("  LeveledList FAILED: EditorID '{}' AND FormID 0x{:08X} both missing!", editorID, fallbackID);
+            SKSE::log::error("  LeveledList FAILED: EditorID '{}' AND INI FormID {} both missing!", editorID, formIdStr);
         }
     }
     return form;

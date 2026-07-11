@@ -37,6 +37,18 @@ namespace Settings {
     inline bool EnableForsworn = true;
     inline bool EnableDraugr = true;
 
+    // FormIDs for Leveled Lists (Hex strings)
+    inline std::string FormID_Bandit = "0x00010EA7";
+    inline std::string FormID_BanditBoss = "0x000179C9";
+    inline std::string FormID_Vampire = "0x00013589";
+    inline std::string FormID_VampireBoss = "0x0001358A";
+    inline std::string FormID_Warlock = "0x000130F1";
+    inline std::string FormID_WarlockBoss = "0x000130F2";
+    inline std::string FormID_Forsworn = "0x000130F3";
+    inline std::string FormID_ForswornBoss = "0x000130F4";
+    inline std::string FormID_Draugr = "0x000130F5";
+    inline std::string FormID_DraugrBoss = "0x000130F6";
+
     inline constexpr const char* INI_PATH = "Data/SKSE/Plugins/BanditReinforcementsNG.ini";
 
     // If INI doesn't exist, create it with default values
@@ -87,6 +99,19 @@ namespace Settings {
         ini.SetBoolValue("Factions", "bEnableForsworn", true);
         ini.SetBoolValue("Factions", "bEnableDraugr", true);
 
+        // FormIDs
+        ini.SetValue("FormIDs", "sBandit", "0x00010EA7",
+            "; FormIDs for the leveled lists (You MUST check these in xEdit if they don't spawn)");
+        ini.SetValue("FormIDs", "sBanditBoss", "0x000179C9");
+        ini.SetValue("FormIDs", "sVampire", "0x00013589");
+        ini.SetValue("FormIDs", "sVampireBoss", "0x0001358A");
+        ini.SetValue("FormIDs", "sWarlock", "0x000130F1");
+        ini.SetValue("FormIDs", "sWarlockBoss", "0x000130F2");
+        ini.SetValue("FormIDs", "sForsworn", "0x000130F3");
+        ini.SetValue("FormIDs", "sForswornBoss", "0x000130F4");
+        ini.SetValue("FormIDs", "sDraugr", "0x000130F5");
+        ini.SetValue("FormIDs", "sDraugrBoss", "0x000130F6");
+
         ini.SaveFile(INI_PATH);
     }
 
@@ -130,6 +155,18 @@ namespace Settings {
             EnableWarlocks = ini.GetBoolValue("Factions", "bEnableWarlocks", true);
             EnableForsworn = ini.GetBoolValue("Factions", "bEnableForsworn", true);
             EnableDraugr = ini.GetBoolValue("Factions", "bEnableDraugr", true);
+
+            // FormIDs
+            FormID_Bandit = ini.GetValue("FormIDs", "sBandit", "0x00010EA7");
+            FormID_BanditBoss = ini.GetValue("FormIDs", "sBanditBoss", "0x000179C9");
+            FormID_Vampire = ini.GetValue("FormIDs", "sVampire", "0x00013589");
+            FormID_VampireBoss = ini.GetValue("FormIDs", "sVampireBoss", "0x0001358A");
+            FormID_Warlock = ini.GetValue("FormIDs", "sWarlock", "0x000130F1");
+            FormID_WarlockBoss = ini.GetValue("FormIDs", "sWarlockBoss", "0x000130F2");
+            FormID_Forsworn = ini.GetValue("FormIDs", "sForsworn", "0x000130F3");
+            FormID_ForswornBoss = ini.GetValue("FormIDs", "sForswornBoss", "0x000130F4");
+            FormID_Draugr = ini.GetValue("FormIDs", "sDraugr", "0x000130F5");
+            FormID_DraugrBoss = ini.GetValue("FormIDs", "sDraugrBoss", "0x000130F6");
 
             SKSE::log::info("INI loaded successfully from {}", INI_PATH);
         }
