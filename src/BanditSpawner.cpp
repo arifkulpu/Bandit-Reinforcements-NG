@@ -40,6 +40,67 @@ void BanditSpawner::DumpLeveledLists() {
     SKSE::log::info("=== DUMP FINISHED ===");
 }
 
+// ── Dynamic Fallback Cache ────────────────────────────────────────
+std::vector<RE::TESBoundObject*>& BanditSpawner::GetCacheForFaction(FactionType faction) {
+    static std::vector<RE::TESBoundObject*> cacheBandit;
+    static std::vector<RE::TESBoundObject*> cacheVampire;
+    static std::vector<RE::TESBoundObject*> cacheWarlock;
+    static std::vector<RE::TESBoundObject*> cacheForsworn;
+    static std::vector<RE::TESBoundObject*> cacheDraugr;
+    static std::vector<RE::TESBoundObject*> cacheUnknown;
+
+    switch (faction) {
+        case FactionType::Bandit:   return cacheBandit;
+        case FactionType::Vampire:  return cacheVampire;
+        case FactionType::Warlock:  return cacheWarlock;
+        case FactionType::Forsworn: return cacheForsworn;
+        case FactionType::Draugr:   return cacheDraugr;
+        default:                    return cacheUnknown;
+    }
+}
+
+void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
+    if (!cell || faction == FactionType::Unknown) return;
+
+    auto& cache = GetCacheForFaction(faction);
+    
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return;
+
+    // Sadece uygun keyword/faction'a sahip npc'leri cache'e ekle
+    bool added = false;
+    for (auto& ref : cell->GetRuntimeData().references) {
+        if (!ref) continue;
+        auto actor = ref->As<RE::Actor>();
+        if (!actor || actor == player) continue;
+        
+        auto baseObj = actor->GetActorBase();
+        if (!baseObj) continue;
+        
+        if (actor->IsHostileToActor(player) || actor->IsDead()) {
+            // Check if already in cache
+            bool exists = false;
+            for (auto* cachedBase : cache) {
+                if (cachedBase == baseObj) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                cache.push_back(baseObj);
+                added = true;
+                if (cache.size() > 50) { // Keep bounded
+                    cache.erase(cache.begin());
+                }
+            }
+        }
+    }
+    
+    if (added && Settings::EnableLogging) {
+        SKSE::log::info("  UpdateCache: Faction {} cache size is now {}", static_cast<int>(faction), cache.size());
+    }
+}
+
 // ── Spawn count based on player level ────────────────────────────
 int BanditSpawner::GetSpawnCount() {
     auto player = RE::PlayerCharacter::GetSingleton();
@@ -74,12 +135,12 @@ const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBo
 }
 
 // ── Fallback FormIDs for vanilla leveled lists ───────────────────
-static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction, bool isBoss) {
+static RE::TESBoundObject* LookupLeveledList(const char* editorID, FactionType faction, bool isBoss) {
     auto form = RE::TESForm::LookupByEditorID(editorID);
     if (form) {
         if (Settings::EnableLogging)
             SKSE::log::info("  LeveledList OK by EditorID: '{}'", editorID);
-        return form;
+        return form->As<RE::TESBoundObject>();
     }
 
     // Fallback to INI FormIDs
@@ -106,11 +167,26 @@ static RE::TESForm* LookupLeveledList(const char* editorID, FactionType faction,
         form = RE::TESForm::LookupByID(fallbackID);
         if (form) {
             SKSE::log::warn("  LeveledList fallback: EditorID '{}' not found, using INI FormID {}", editorID, formIdStr);
+            return form->As<RE::TESBoundObject>();
         } else {
             SKSE::log::error("  LeveledList FAILED: EditorID '{}' AND INI FormID {} both missing!", editorID, formIdStr);
         }
     }
-    return form;
+    
+    // YENI: Eğer EditorID ve FormID çökerse (Örn: Lawless modu listeleri silmişse), 
+    // etraftaki veya daha önce gördüğümüz aynı tip düşmanların BaseObj'lerini kopyala!
+    auto& cache = BanditSpawner::GetCacheForFaction(faction);
+    if (!cache.empty()) {
+        std::uniform_int_distribution<> dist(0, cache.size() - 1);
+        auto* cachedBase = cache[dist(BanditSpawner::GetRNG())];
+        if (cachedBase) {
+            SKSE::log::info("  DYNAMIC COPY: Using a cached NPC base object for Faction {} (Total cached: {})", static_cast<int>(faction), cache.size());
+            return cachedBase;
+        }
+    }
+
+    SKSE::log::error("  DYNAMIC COPY FAILED: No cached NPCs available for Faction {}. Cannot spawn!", static_cast<int>(faction));
+    return nullptr;
 }
 
 // ── Determine faction from location keywords ─────────────────────
@@ -204,17 +280,11 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, int retries) {
 static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionType faction, bool isBoss,
                                               float offsetX, float offsetY) {
     const char* listEditorID = BanditSpawner::GetLeveledListEditorID(faction, isBoss);
-    auto listForm = LookupLeveledList(listEditorID, faction, isBoss);
+    auto baseObj = LookupLeveledList(listEditorID, faction, isBoss);
 
-    if (!listForm) {
-        SKSE::log::error("  SPAWN FAILED: No leveled list found for faction={} boss={}", 
-                        static_cast<int>(faction), isBoss);
-        return RE::ObjectRefHandle();
-    }
-
-    auto baseObj = listForm->As<RE::TESBoundObject>();
     if (!baseObj) {
-        SKSE::log::error("  SPAWN FAILED: Form 0x{:08X} is not TESBoundObject", listForm->GetFormID());
+        SKSE::log::error("  SPAWN FAILED: No leveled list or cached NPC found for faction={} boss={}", 
+                        static_cast<int>(faction), isBoss);
         return RE::ObjectRefHandle();
     }
 

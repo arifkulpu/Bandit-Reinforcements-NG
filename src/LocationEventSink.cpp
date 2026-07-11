@@ -56,6 +56,8 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
             if (prevLoc) {
                 auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
                 if (faction != FactionType::Unknown) {
+                    BanditSpawner::UpdateCache(prevCell, faction);
+                    
                     SKSE::log::info("  Zindan pususu tetikleniyor (faction={})", static_cast<int>(faction));
                     auto ambushResult = BanditSpawner::SpawnAmbush(faction);
                     if (ambushResult.count > 0) {
@@ -100,6 +102,10 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
             SKSE::log::info(">> CAMP LEAVE DETECTED! OldLoc=0x{:08X} (faction={})", 
                            oldLoc->GetFormID(), static_cast<int>(oldFaction));
             
+            if (player && player->GetParentCell()) {
+                BanditSpawner::UpdateCache(player->GetParentCell(), oldFaction);
+            }
+
             auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction, true); // isOutdoorCamp=true → 1500 birim mesafe
             if (ambushResult.count > 0) {
                 auto taskInterface = SKSE::GetTaskInterface();
@@ -129,6 +135,10 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     if (faction == FactionType::Unknown) {
         SKSE::log::info("  Location is not a hostile area, skipping reinforcements.");
         return RE::BSEventNotifyControl::kContinue;
+    }
+
+    if (player && player->GetParentCell()) {
+        BanditSpawner::UpdateCache(player->GetParentCell(), faction);
     }
 
     RE::FormID trackID = newLoc->GetFormID();

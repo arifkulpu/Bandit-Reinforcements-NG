@@ -42,7 +42,12 @@ public:
     // Dump all leveled list FormIDs to the log (call during kDataLoaded)
     static void DumpLeveledLists();
 
-private:
+    // Scan the cell and cache enemy base objects for dynamic copying
+    static void UpdateCache(RE::TESObjectCELL* cell, FactionType faction);
+
     static int GetSpawnCount();
     static std::mt19937& GetRNG();
+    
+    // Fallback dynamic cache mapping FactionType to a list of TESBoundObject*
+    static std::vector<RE::TESBoundObject*>& GetCacheForFaction(FactionType faction);
 };
