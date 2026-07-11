@@ -321,26 +321,31 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, int retries) {
         auto actor = ref->As<RE::Actor>();
         if (!actor || actor->IsDead()) return;
 
-        // Skyrim 3D loading is asynchronous. If we evaluate AI before 3D is ready,
-        // the actor might glide without playing animations (T-pose or stuck).
-        if (!actor->Is3DLoaded() && retries < 300) { // wait up to 5 seconds (300 frames)
-            BanditSpawner::FixActorAI(handle, retries + 1);
-            return;
+        // 3D yuklenmesini bekle - ama 300 denemeden sonra yine de devam et
+        if (!actor->Is3DLoaded()) {
+            if (retries < 300) {
+                BanditSpawner::FixActorAI(handle, retries + 1);
+                return;
+            }
+            // 300 deneme sonrasinda hala 3D yoksa yine de AI'i baslat
+            if (Settings::EnableLogging) {
+                SKSE::log::warn("  FixActorAI: 3D never loaded for 0x{:08X}, forcing AI init anyway", actor->GetFormID());
+            }
         }
 
         auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) return;
 
-        // 1. Move to high processing (fully active)
+        // 1. Tam aktif hale getir
         actor->MoveToHigh();
 
-        // 2. Enable AI explicitly
+        // 2. AI'yi etkinlestir
         actor->EnableAI(true);
 
-        // 3. Reset and evaluate AI package so they don't just stand there
+        // 3. AI paketini sifirla ve degerlendire
         actor->EvaluatePackage(true, true);
 
-        // 4. Update combat state so they notice the player
+        // 4. Savas durumunu guncelle (oyuncuyu fark etsin)
         actor->UpdateCombat();
 
         if (Settings::EnableLogging) {
@@ -362,29 +367,32 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
         return RE::ObjectRefHandle();
     }
 
-    // PlaceObjectAtMe: aktörü anchor'ın yanında doğur, OFFSET YOK!
-    // Offset'i SetPosition ile değil, MoveTo_Impl'in pos argümanıyla vereceğiz.
-    auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
+    // Her zaman player uzerinde spawn et (en guvenli yontem)
+    // Sonra anchor+offset konumuna tasiyacagiz
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return RE::ObjectRefHandle();
+
+    auto spawned = player->PlaceObjectAtMe(baseObj, false);
     if (!spawned) {
         SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null");
         return RE::ObjectRefHandle();
     }
 
-    // Aktörü doğru konuma taşı
+    // Hedef pozisyon: anchor konumu + XY offset, Z = anchor'in Z'si (yer altina gommemek icin)
     RE::NiPoint3 targetPos = anchor->GetPosition();
     targetPos.x += offsetX;
     targetPos.y += offsetY;
-    // Z koordinatı: anchor'dan 0 fark (yükseklik sabit)
+    // Z'yi degistirme: anchor'in yuksekligini koru
     spawned->SetPosition(targetPos);
 
     auto handle = spawned->GetHandle();
 
     if (Settings::EnableLogging) {
-        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X}", 
-                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID());
+        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X} Z={:.0f}", 
+                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID(), targetPos.z);
     }
 
-    // AI fix'i bir sonraki frame'e ertele (animasyon glitch önleme)
+    // AI fix'i bir sonraki frame'e ertele (animasyon glitch onleme)
     BanditSpawner::FixActorAI(handle);
 
     return handle;
