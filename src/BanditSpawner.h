@@ -47,6 +47,12 @@ public:
     // Scan the cell and cache enemy base objects for dynamic copying
     static void UpdateCache(RE::TESObjectCELL* cell, FactionType faction);
 
+    // Save dynamic cache to disk so it persists across sessions
+    static void SaveCache();
+
+    // Load dynamic cache from disk (call during kDataLoaded)
+    static void LoadCache();
+
     static int GetSpawnCount();
     static std::mt19937& GetRNG();
     
