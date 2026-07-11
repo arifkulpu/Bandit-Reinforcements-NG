@@ -513,7 +513,13 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     for (int i = 0; i < count; ++i) {
         // Oyuncunun önünde 120 derecelik bir yarım dairede yayıl
         std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);  // ±60 derece
-        std::uniform_real_distribution<float> radiusDist(ambushDist * 0.7f, ambushDist * 1.3f);
+        
+        // Zindan çıkışları için çok daha yakın spawnla
+        float minR = isOutdoorCamp ? ambushDist * 0.7f : 150.0f;
+        float maxR = isOutdoorCamp ? ambushDist * 1.3f : 300.0f;
+        
+        std::uniform_real_distribution<float> radiusDist(minR, maxR);
+        
         float angle = playerAngle + arcDist(rng);
         float radius = radiusDist(rng);
         float offsetX = radius * std::cos(angle);
