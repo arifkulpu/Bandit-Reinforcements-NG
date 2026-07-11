@@ -33,17 +33,17 @@ int BanditSpawner::GetSpawnCount() {
 const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBoss) {
     switch (faction) {
         case FactionType::Bandit:
-            return isBoss ? "LCharBanditBoss" : "LCharBandit";
+            return isBoss ? "LCharBanditBoss" : "LCharBanditAny";
         case FactionType::Vampire:
             return isBoss ? "LCharVampireBoss" : "LCharVampire";
         case FactionType::Warlock:
-            return isBoss ? "LCharWarlockBoss" : "LCharWarlock";
+            return isBoss ? "LCharWarlockBoss" : "LCharWarlockAny";
         case FactionType::Forsworn:
-            return isBoss ? "LCharForswornBoss" : "LCharForsworn";
+            return isBoss ? "LCharForswornBoss" : "LCharForswornAny";
         case FactionType::Draugr:
-            return isBoss ? "LCharDraugrBoss" : "LCharDraugr";
+            return isBoss ? "LCharDraugrBoss" : "LCharDraugrAny";
         default:
-            return isBoss ? "LCharBanditBoss" : "LCharBandit";
+            return isBoss ? "LCharBanditBoss" : "LCharBanditAny";
     }
 }
 

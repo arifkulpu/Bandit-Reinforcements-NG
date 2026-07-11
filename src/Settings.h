@@ -38,7 +38,7 @@ namespace Settings {
     inline bool EnableDraugr = true;
 
     // FormIDs for Leveled Lists (Hex strings)
-    inline std::string FormID_Bandit = "0x00010EA7";
+    inline std::string FormID_Bandit = "0x0001068A";
     inline std::string FormID_BanditBoss = "0x000179C9";
     inline std::string FormID_Vampire = "0x00013589";
     inline std::string FormID_VampireBoss = "0x0001358A";
@@ -100,7 +100,7 @@ namespace Settings {
         ini.SetBoolValue("Factions", "bEnableDraugr", true);
 
         // FormIDs
-        ini.SetValue("FormIDs", "sBandit", "0x00010EA7",
+        ini.SetValue("FormIDs", "sBandit", "0x0001068A",
             "; FormIDs for the leveled lists (You MUST check these in xEdit if they don't spawn)");
         ini.SetValue("FormIDs", "sBanditBoss", "0x000179C9");
         ini.SetValue("FormIDs", "sVampire", "0x00013589");
@@ -157,7 +157,7 @@ namespace Settings {
             EnableDraugr = ini.GetBoolValue("Factions", "bEnableDraugr", true);
 
             // FormIDs
-            FormID_Bandit = ini.GetValue("FormIDs", "sBandit", "0x00010EA7");
+            FormID_Bandit = ini.GetValue("FormIDs", "sBandit", "0x0001068A");
             FormID_BanditBoss = ini.GetValue("FormIDs", "sBanditBoss", "0x000179C9");
             FormID_Vampire = ini.GetValue("FormIDs", "sVampire", "0x00013589");
             FormID_VampireBoss = ini.GetValue("FormIDs", "sVampireBoss", "0x0001358A");
