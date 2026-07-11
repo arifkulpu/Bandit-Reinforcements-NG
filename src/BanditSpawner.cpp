@@ -400,17 +400,74 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         }
     }
 
+    // Anchor'lari topla: Hucrede halihazirda var olan hedefe ait faction dusmanlari (olu veya diri)
+    std::vector<RE::TESObjectREFR*> anchors;
+    if (cell) {
+        for (auto& ref : cell->GetRuntimeData().references) {
+            if (!ref) continue;
+            auto actor = ref->As<RE::Actor>();
+            if (!actor || actor == player) continue;
+            
+            auto baseObj = actor->GetActorBase();
+            if (!baseObj) continue;
+
+            bool isCorrectFaction = false;
+            actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
+                if (f) {
+                    RE::FormID fID = f->GetFormID();
+                    if (faction == FactionType::Bandit && fID == 0x0001BCC0) isCorrectFaction = true;
+                    else if (faction == FactionType::Vampire && fID == 0x00027242) isCorrectFaction = true;
+                    else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
+                    else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
+                    else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
+                }
+                return false;
+            });
+            
+            if (!isCorrectFaction) {
+                auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794);
+                bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
+                if (faction == FactionType::Draugr) isNPC = true;
+
+                if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
+                    isCorrectFaction = true;
+                }
+            }
+
+            if (isCorrectFaction) {
+                anchors.push_back(actor);
+            }
+        }
+    }
+
+    if (Settings::EnableLogging) {
+        SKSE::log::info("  Found {} existing valid anchors in the cell.", anchors.size());
+    }
+
     for (int i = 0; i < count; ++i) {
         bool isBoss = (shouldSpawnBoss && i == 0);
 
+        RE::TESObjectREFR* spawnAnchor = player;
+        float currentMinDist = minDist;
+        float currentMaxDist = maxDist;
+
+        // Eger hucrede halihazirda ayni tip dusman varsa, onlardan birinin yaninda dogur (cluster effect)
+        if (!anchors.empty()) {
+            std::uniform_int_distribution<> anchorDist(0, (int)anchors.size() - 1);
+            spawnAnchor = anchors[anchorDist(rng)];
+            // Düşmanın dibinde doğsun (50 ile 150 birim arası)
+            currentMinDist = 50.0f;
+            currentMaxDist = 150.0f;
+        }
+
         std::uniform_real_distribution<float> angleDist(0.0f, static_cast<float>(2.0 * M_PI));
-        std::uniform_real_distribution<float> radiusDist(minDist, maxDist);
+        std::uniform_real_distribution<float> radiusDist(currentMinDist, currentMaxDist);
         float angle = angleDist(rng);
         float radius = radiusDist(rng);
         float offsetX = radius * std::cos(angle);
         float offsetY = radius * std::sin(angle);
 
-        auto handle = SpawnSingleActor(player, faction, isBoss, offsetX, offsetY);
+        auto handle = SpawnSingleActor(spawnAnchor, faction, isBoss, offsetX, offsetY);
         if (handle) {
             result.spawnedActors.push_back(handle);
         }
