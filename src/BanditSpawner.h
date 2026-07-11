@@ -34,8 +34,8 @@ public:
     // Get the EditorID of the leveled character list for a faction
     static const char* GetLeveledListEditorID(FactionType faction, bool isBoss);
 
-    // Post-spawn AI fix: called on game thread with a delay
-    static void FixActorAI(RE::ObjectRefHandle handle);
+    // Post-spawn AI fix: called on game thread with a delay, waits for 3D
+    static void FixActorAI(RE::ObjectRefHandle handle, int retries = 0);
 
 private:
     static int GetSpawnCount();

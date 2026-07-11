@@ -137,33 +137,42 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
 // Skyrim'de PlaceObjectAtMe sonrası aktör tam yüklenmeden SetPosition/EvaluatePackage
 // çağrılırsa animasyon glitch ve T-pose oluşur.
 // Bu fonksiyon bir sonraki frame'de game thread'inde çalışarak aktörü düzgün başlatır.
-void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle) {
+void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, int retries) {
     auto taskInterface = SKSE::GetTaskInterface();
     if (!taskInterface) return;
 
-    // Kopyayı lambda'ya capture et
-    taskInterface->AddTask([handle]() {
+    taskInterface->AddTask([handle, retries]() {
         auto ref = handle.get();
         if (!ref) return;
 
         auto actor = ref->As<RE::Actor>();
         if (!actor || actor->IsDead()) return;
 
+        // Skyrim 3D loading is asynchronous. If we evaluate AI before 3D is ready,
+        // the actor might glide without playing animations (T-pose or stuck).
+        if (!actor->Is3DLoaded() && retries < 60) { // wait up to 1 second (60 frames)
+            BanditSpawner::FixActorAI(handle, retries + 1);
+            return;
+        }
+
         auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) return;
 
-        // 1. Aktörü yüksek LOD moduna al (görünür hale getir)
+        // 1. Move to high processing (fully active)
         actor->MoveToHigh();
 
-        // 2. AI paketini sıfırla ve yeniden değerlendir
+        // 2. Enable AI explicitly
+        actor->EnableAI(true);
+
+        // 3. Reset and evaluate AI package so they don't just stand there
         actor->EvaluatePackage(true, true);
 
-        // 3. Savaş sistemini güncelle → oyuncuyu düşman olarak algılar
+        // 4. Update combat state so they notice the player
         actor->UpdateCombat();
 
         if (Settings::EnableLogging) {
-            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI initialized on game thread", 
-                            actor->GetFormID());
+            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI initialized (retries={})", 
+                            actor->GetFormID(), retries);
         }
     });
 }

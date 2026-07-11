@@ -13,34 +13,30 @@ void LocationEventSink::Register() {
     auto scriptEventSource = RE::ScriptEventSourceHolder::GetSingleton();
     if (scriptEventSource) {
         scriptEventSource->AddEventSink<RE::TESCellAttachDetachEvent>(GetSingleton());
-        SKSE::log::info("LocationEventSink registered (TESCellAttachDetachEvent).");
+        scriptEventSource->AddEventSink<RE::TESActorLocationChangeEvent>(GetSingleton());
+        SKSE::log::info("LocationEventSink registered (CellAttach & ActorLocationChange).");
     } else {
         SKSE::log::error("LocationEventSink: ScriptEventSourceHolder not found!");
     }
 }
 
+// ── 1. CELL ATTACH EVENT (For Ambush on Dungeon Exit) ──
 RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     const RE::TESCellAttachDetachEvent* a_event,
     RE::BSTEventSource<RE::TESCellAttachDetachEvent>*) 
 {
-    // Sadece "attach" (yükleme) olaylarını işle, "detach" (boşaltma) değil
     if (!a_event || !a_event->reference || !a_event->attached) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    // Sadece oyuncu olaylarını işle
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player || a_event->reference.get() != player) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
     auto cell = player->GetParentCell();
-    if (!cell) {
-        SKSE::log::warn("ProcessEvent: Player has no parent cell, skipping.");
-        return RE::BSEventNotifyControl::kContinue;
-    }
+    if (!cell) return RE::BSEventNotifyControl::kContinue;
 
-    // Aynı hücrede tekrar tetiklenmeyi önle
     RE::FormID currentCellID = cell->GetFormID();
     if (currentCellID == m_lastProcessedCellID) {
         return RE::BSEventNotifyControl::kContinue;
@@ -49,77 +45,68 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
     bool isInterior = cell->IsInteriorCell();
 
-    SKSE::log::info("=== CellChange: Cell=0x{:08X}, Interior={}, WasInterior={} ===", 
-                    currentCellID, isInterior, m_wasInInterior);
-
-    // ── PUSU KONTROLÜ: İç → Dış mekan geçişi (zindan çıkışı) ──
+    // ── AMBUSH CHECK: Interior → Exterior transition ──
     if (m_wasInInterior && !isInterior && m_lastInteriorCellID != 0) {
-        SKSE::log::info("  >> DUNGEON EXIT! PrevInteriorCell=0x{:08X}", m_lastInteriorCellID);
-
+        SKSE::log::info(">> DUNGEON EXIT DETECTED! PrevInteriorCell=0x{:08X}", m_lastInteriorCellID);
         auto prevCell = RE::TESForm::LookupByID<RE::TESObjectCELL>(m_lastInteriorCellID);
         if (prevCell) {
-            // Önce hücrenin kendi location'ına bak
             RE::BGSLocation* prevLoc = prevCell->GetLocation();
-            
-            SKSE::log::info("  PrevCell=0x{:08X}, prevLoc={}", 
-                           prevCell->GetFormID(), prevLoc ? "FOUND" : "NULL");
-
             if (prevLoc) {
                 auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
-                SKSE::log::info("  Ambush faction={}", static_cast<int>(faction));
-
                 if (faction != FactionType::Unknown) {
                     auto ambushResult = BanditSpawner::SpawnAmbush(faction);
                     if (ambushResult.count > 0) {
-                        RE::FormID trackID = currentCellID;
-                        SpawnTracker::GetSingleton()->RegisterSpawn(trackID, ambushResult.spawnedActors);
+                        SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, ambushResult.spawnedActors);
                     }
-                } else {
-                    SKSE::log::info("  No hostile faction at previous location, no ambush.");
                 }
-            } else {
-                SKSE::log::info("  Previous interior cell had no BGSLocation, no ambush.");
             }
         }
     }
 
-    // Durum güncellemesi
     m_wasInInterior = isInterior;
     m_lastInteriorCellID = isInterior ? currentCellID : 0;
 
-    // ── GECİKMİŞ GÜNCELLEME: Eski spawn kayıtlarını temizle ──
+    // Trigger cleanup
     SpawnTracker::GetSingleton()->Update();
 
-    // ── TAKVİYE KONTROLÜ: Düşman lokasyonuna giriş ──
-    // Önce hücrenin location'ına bak, sonra oyuncunun location'ına
-    RE::BGSLocation* loc = cell->GetLocation();
-    if (!loc) {
-        loc = player->GetCurrentLocation();
-    }
+    return RE::BSEventNotifyControl::kContinue;
+}
 
-    if (!loc) {
-        SKSE::log::info("  No BGSLocation for this cell or player, skipping reinforcements.");
+// ── 2. ACTOR LOCATION CHANGE EVENT (For Camp Reinforcements) ──
+RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
+    const RE::TESActorLocationChangeEvent* a_event,
+    RE::BSTEventSource<RE::TESActorLocationChangeEvent>*) 
+{
+    if (!a_event || !a_event->actor) return RE::BSEventNotifyControl::kContinue;
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (a_event->actor.get() != player) return RE::BSEventNotifyControl::kContinue;
+
+    RE::BGSLocation* newLoc = a_event->newLoc;
+    
+    // YENİ KONUM YOKSA ATLA (örn. açık dünya hücreleri bazen locationsuzdur)
+    if (!newLoc) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    SKSE::log::info("  Location=0x{:08X}", loc->GetFormID());
+    SKSE::log::info("=== ActorLocationChange: NewLoc=0x{:08X} ===", newLoc->GetFormID());
 
-    auto faction = BanditSpawner::GetFactionFromLocation(loc);
+    auto faction = BanditSpawner::GetFactionFromLocation(newLoc);
     if (faction == FactionType::Unknown) {
-        SKSE::log::info("  Location is not a hostile area, skipping.");
+        SKSE::log::info("  Location is not a hostile area, skipping reinforcements.");
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    RE::FormID trackID = loc->GetFormID();
+    RE::FormID trackID = newLoc->GetFormID();
 
     if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
         SKSE::log::info("  Location READY → spawning reinforcements (faction={})", static_cast<int>(faction));
-        auto spawnResult = BanditSpawner::SpawnReinforcements(cell, faction);
+        auto spawnResult = BanditSpawner::SpawnReinforcements(player->GetParentCell(), faction);
         if (spawnResult.count > 0) {
             SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
         }
     } else {
-        SKSE::log::info("  Location in COOLDOWN, skipping.");
+        SKSE::log::info("  Location in COOLDOWN or already spawned, skipping.");
     }
 
     return RE::BSEventNotifyControl::kContinue;
