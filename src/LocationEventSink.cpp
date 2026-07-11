@@ -20,7 +20,9 @@ void LocationEventSink::Register() {
     }
 }
 
-// ── 1. CELL ATTACH EVENT (For Ambush on Dungeon Exit) ──
+// ── 1. CELL ATTACH EVENT (Dungeon Exit → Ambush) ──────────────────
+// Zindan (iç mekan) çıkışını yakalar. Bu durum doğrudan TESActorLocationChangeEvent
+// ile yakalanmaz çünkü zindanların location'ı bazen iç/dış aynı olabiliyor.
 RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     const RE::TESCellAttachDetachEvent* a_event,
     RE::BSTEventSource<RE::TESCellAttachDetachEvent>*) 
@@ -45,15 +47,16 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
     bool isInterior = cell->IsInteriorCell();
 
-    // ── AMBUSH CHECK: Interior → Exterior transition ──
+    // ── PUSU: İç mekan (Zindan) → Dış mekan geçişi ──
     if (m_wasInInterior && !isInterior && m_lastInteriorCellID != 0) {
-        SKSE::log::info(">> DUNGEON EXIT DETECTED! PrevInteriorCell=0x{:08X}", m_lastInteriorCellID);
+        SKSE::log::info(">> DUNGEON EXIT! PrevInteriorCell=0x{:08X}", m_lastInteriorCellID);
         auto prevCell = RE::TESForm::LookupByID<RE::TESObjectCELL>(m_lastInteriorCellID);
         if (prevCell) {
             RE::BGSLocation* prevLoc = prevCell->GetLocation();
             if (prevLoc) {
                 auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
                 if (faction != FactionType::Unknown) {
+                    SKSE::log::info("  Zindan pususu tetikleniyor (faction={})", static_cast<int>(faction));
                     auto ambushResult = BanditSpawner::SpawnAmbush(faction);
                     if (ambushResult.count > 0) {
                         SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, ambushResult.spawnedActors);
@@ -65,14 +68,15 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
     m_wasInInterior = isInterior;
     m_lastInteriorCellID = isInterior ? currentCellID : 0;
-
-    // Trigger cleanup
     SpawnTracker::GetSingleton()->Update();
 
     return RE::BSEventNotifyControl::kContinue;
 }
 
-// ── 2. ACTOR LOCATION CHANGE EVENT (For Camp Reinforcements) ──
+// ── 2. ACTOR LOCATION CHANGE EVENT (Kamp Girişi + Açık Dünya Pususu) ──
+// Bu olay hem zindan hem dış mekan için tetiklenir:
+//   - newLoc = düşman yeri  → Takviye (Reinforcement) spawn
+//   - oldLoc = düşman yeri + newLoc farklı/null → Açık dünya pususu (kamp terkinde)
 RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     const RE::TESActorLocationChangeEvent* a_event,
     RE::BSTEventSource<RE::TESActorLocationChangeEvent>*) 
@@ -82,9 +86,39 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     auto player = RE::PlayerCharacter::GetSingleton();
     if (a_event->actor.get() != player) return RE::BSEventNotifyControl::kContinue;
 
+    RE::BGSLocation* oldLoc = a_event->oldLoc;
     RE::BGSLocation* newLoc = a_event->newLoc;
-    
-    // YENİ KONUM YOKSA ATLA (örn. açık dünya hücreleri bazen locationsuzdur)
+
+    // ── AÇIK DÜNYA PUSUSU: Düşman kampını terk ediyoruz ──
+    // Kamp içindeyken (oldLoc=düşman yeri) dışarı çıkınca (newLoc farklı) pusu tetiklenir.
+    if (oldLoc) {
+        auto oldFaction = BanditSpawner::GetFactionFromLocation(oldLoc);
+        bool leavingHostileArea = (oldFaction != FactionType::Unknown);
+        bool enteringDifferentArea = (!newLoc || newLoc != oldLoc);
+
+        if (leavingHostileArea && enteringDifferentArea) {
+            SKSE::log::info(">> CAMP LEAVE DETECTED! OldLoc=0x{:08X} (faction={})", 
+                           oldLoc->GetFormID(), static_cast<int>(oldFaction));
+            
+            auto ambushResult = BanditSpawner::SpawnAmbush(oldFaction);
+            if (ambushResult.count > 0) {
+                auto taskInterface = SKSE::GetTaskInterface();
+                if (taskInterface) {
+                    auto handles = ambushResult.spawnedActors;
+                    taskInterface->AddTask([handles]() {
+                        auto p = RE::PlayerCharacter::GetSingleton();
+                        if (!p) return;
+                        auto trackID = p->GetParentCell() ? p->GetParentCell()->GetFormID() : 0;
+                        if (trackID != 0) {
+                            SpawnTracker::GetSingleton()->RegisterSpawn(trackID, handles);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    // ── TAKVİYE: Düşman alanına giriyoruz ──
     if (!newLoc) {
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -100,15 +134,15 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     RE::FormID trackID = newLoc->GetFormID();
 
     if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
-        SKSE::log::info("  Location READY → spawning reinforcements (faction={})", static_cast<int>(faction));
+        SKSE::log::info("  Location READY -> spawning reinforcements (faction={})", static_cast<int>(faction));
         
         auto taskInterface = SKSE::GetTaskInterface();
         if (taskInterface) {
             taskInterface->AddTask([trackID, faction]() {
-                auto player = RE::PlayerCharacter::GetSingleton();
-                if (!player) return;
+                auto p = RE::PlayerCharacter::GetSingleton();
+                if (!p) return;
                 
-                auto currentCell = player->GetParentCell();
+                auto currentCell = p->GetParentCell();
                 if (!currentCell) {
                     SKSE::log::warn("  Task: Player still has no parent cell. Aborting spawn.");
                     return;
