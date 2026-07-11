@@ -57,11 +57,11 @@ void BanditSpawner::LoadCache() {
                 RE::FormID localID = std::stoul(formIdStr, nullptr, 16);
                 
                 RE::FormID fullID = dataHandler->LookupFormID(localID, pluginName);
-                if (fullID != 0) {
+                if (fullID != 0 && fullID < 0xFF000000) {
                     auto form = RE::TESForm::LookupByID(fullID);
                     if (form) {
                         auto baseObj = form->As<RE::TESBoundObject>();
-                        if (baseObj) {
+                        if (baseObj && baseObj->GetFormID() < 0xFF000000) {
                             FactionType faction = static_cast<FactionType>(factionInt);
                             auto& cache = GetCacheForFaction(faction);
                             
@@ -167,6 +167,11 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         
         auto baseObj = actor->GetActorBase();
         if (!baseObj) continue;
+        
+        // 0xFF ile baslayan formlar (ornegin 0xFF00113C) oyun icerisinde olusturulmus gecici kopyalardir (Runtime Temporary).
+        // Bu formlardan NPC uretip (PlaceObjectAtMe) ardindan oyunu kaydedersek save dosyasi bozulur ve Save Load Crash yasanir!
+        // Bu yuzden sadece eklentilerden gelen statik formlari (0x00 - 0xFE) kabul etmeliyiz.
+        if (baseObj->GetFormID() >= 0xFF000000) continue;
         
         // Faction kontrolü yapalım (Örn: BanditFaction = 0x1BCC0, VampireFaction = 0x27242)
         bool isCorrectFaction = false;
