@@ -205,52 +205,15 @@ const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBo
 }
 
 // ── Fallback FormIDs for vanilla leveled lists ───────────────────
-static RE::TESBoundObject* LookupLeveledList(const char* editorID, FactionType faction, bool isBoss) {
-    auto form = RE::TESForm::LookupByEditorID(editorID);
-    if (form) {
-        if (Settings::EnableLogging)
-            SKSE::log::info("  LeveledList OK by EditorID: '{}'", editorID);
-        return form->As<RE::TESBoundObject>();
-    }
-
-    // Fallback to INI FormIDs
-    std::string formIdStr = "";
-    switch (faction) {
-        case FactionType::Bandit:   formIdStr = isBoss ? Settings::FormID_BanditBoss : Settings::FormID_Bandit; break;
-        case FactionType::Vampire:  formIdStr = isBoss ? Settings::FormID_VampireBoss : Settings::FormID_Vampire; break;
-        case FactionType::Warlock:  formIdStr = isBoss ? Settings::FormID_WarlockBoss : Settings::FormID_Warlock; break;
-        case FactionType::Forsworn: formIdStr = isBoss ? Settings::FormID_ForswornBoss : Settings::FormID_Forsworn; break;
-        case FactionType::Draugr:   formIdStr = isBoss ? Settings::FormID_DraugrBoss : Settings::FormID_Draugr; break;
-        case FactionType::Animal:   formIdStr = "0x0001007E"; break; // LCharAnimalPredator
-        case FactionType::Falmer:   formIdStr = isBoss ? "0x000130FA" : "0x000130F9"; break; // Generic Falmer
-        case FactionType::Dwemer:   formIdStr = "0x000130F7"; break; // Generic Automaton
-        default:                    formIdStr = isBoss ? Settings::FormID_BanditBoss : Settings::FormID_Bandit; break;
-    }
-
-    RE::FormID fallbackID = 0;
-    try {
-        if (!formIdStr.empty()) {
-            fallbackID = std::stoul(formIdStr, nullptr, 16);
-        }
-    } catch (...) {
-        SKSE::log::error("  LeveledList FAILED: Invalid FormID string in INI: '{}'", formIdStr);
-    }
-
-    if (fallbackID != 0) {
-        form = RE::TESForm::LookupByID(fallbackID);
-        if (form) {
-            SKSE::log::warn("  LeveledList fallback: EditorID '{}' not found, using INI FormID {}", editorID, formIdStr);
-            return form->As<RE::TESBoundObject>();
-        } else {
-            SKSE::log::error("  LeveledList FAILED: EditorID '{}' AND INI FormID {} both missing!", editorID, formIdStr);
-        }
-    }
-    
-    // YENI: Eğer EditorID ve FormID çökerse (Örn: Lawless modu listeleri silmişse), 
-    // etraftaki veya daha önce gördüğümüz aynı tip düşmanların BaseObj'lerini kopyala!
+// DEĞİŞİKLİK (CRASH FIX): OBody, SimpleDualSheath gibi 3D Hook kullanan modların 
+// "TESLevCharacter" spawn edildiğinde (henüz gerçek NPC'ye dönüşmeden) 
+// 3D model okumaya çalışıp oyunu çökertmesini önlemek için LeveledList (LChar) kullanımını KALDIRDIK.
+// Artık %100 her zaman "Dinamik Kopyalama (Cache)" sisteminden, halihazırda oyunda var olan 
+// gerçek "TESNPC" objelerini kullanıyoruz.
+static RE::TESBoundObject* GetFactionBaseObject(FactionType faction, bool isBoss) {
     auto& cache = BanditSpawner::GetCacheForFaction(faction);
     
-    // Eğer cache boşsa, anlık olarak mevcut hücreyi tekrar tara (çünkü hücre yeni yüklenmiş olabilir)
+    // Eğer cache boşsa, anlık olarak mevcut hücreyi tekrar tara
     if (cache.empty()) {
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player && player->GetParentCell()) {
@@ -267,7 +230,7 @@ static RE::TESBoundObject* LookupLeveledList(const char* editorID, FactionType f
         }
     }
 
-    SKSE::log::error("  DYNAMIC COPY FAILED: No cached NPCs available for Faction {}. Cannot spawn!", static_cast<int>(faction));
+    SKSE::log::error("  DYNAMIC COPY FAILED: No cached NPCs available for Faction {}. Cannot spawn! (Aborting to prevent LChar crashes)", static_cast<int>(faction));
     return nullptr;
 }
 
@@ -361,7 +324,7 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPo
 static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionType faction, bool isBoss,
                                               float offsetX, float offsetY) {
     const char* listEditorID = BanditSpawner::GetLeveledListEditorID(faction, isBoss);
-    auto baseObj = LookupLeveledList(listEditorID, faction, isBoss);
+    auto baseObj = GetFactionBaseObject(faction, isBoss);
 
     if (!baseObj) {
         SKSE::log::error("  SPAWN FAILED: No leveled list or cached NPC found for faction={} boss={}",
