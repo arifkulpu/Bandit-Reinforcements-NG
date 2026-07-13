@@ -301,7 +301,13 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
 
 // ── Post-spawn AI fix (called on game thread via TaskInterface) ───
 // ── Post-spawn AI fix + pozisyon taşıma ─────────────────────────
-// PlaceObjectAtMe sonrası 3D yüklenene kadar bekle, sonra konuma taşı ve AI başlat.
+// PlaceObjectAtMe sonrası 3D yüklenene kadar bekle, sonra AI başlat.
+// NOT (CRASH FIX): EvaluatePackage() ve UpdateCombat() KASITLI OLARAK KALDIRILDI.
+// Bu çağrılar DeathDropOverhaul gibi modların MaintainLoadedCells fonksiyonunu
+// tetikleyerek henüz tam başlatılmamış aktörü (ExtraDataList._data = garbage) okumasına
+// ve EXCEPTION_ACCESS_VIOLATION'a neden oluyordu.
+// Aktör zaten XMarker sayesinde doğru konumda spawn edildiğinden,
+// EnableAI(true) çağrısı AI'nın doğal olarak başlaması için yeterlidir.
 void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPos, int retries) {
     auto taskInterface = SKSE::GetTaskInterface();
     if (!taskInterface) return;
@@ -325,19 +331,17 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPo
             }
         }
 
-        // 3D yuklendi (veya timeout) - zaten dogru konumda dogdular.
-        // AI baslat
-        actor->MoveToHigh();
+        // 3D yuklendi (veya timeout) - sadece AI'yi etkinlestir.
+        // MoveToHigh, EvaluatePackage, UpdateCombat KALDIRILDI - crash riski taşıyor.
         actor->EnableAI(true);
-        actor->EvaluatePackage(true, true);
-        actor->UpdateCombat();
 
         if (Settings::EnableLogging) {
-            SKSE::log::info("  FixActorAI: Actor 0x{:08X} positioned & AI initialized (retries={})",
+            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI enabled (retries={})",
                             actor->GetFormID(), retries);
         }
     });
 }
+
 
 // ── Helper: Spawn a single actor ─────────────────────────────────
 static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionType faction, bool isBoss,
