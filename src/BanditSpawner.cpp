@@ -344,13 +344,18 @@ void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPo
 
 
 // ── Helper: Spawn a single actor ─────────────────────────────────
+// XMarker YAKLAŞIMI KALDIRILDI (CRASH FIX):
+// tempMarker->DeleteThis() çağrısı marker'ı hücre referans listesinden hemen kaldırmıyordu;
+// "hayalet" referans olarak kalıyordu. UnreadBooksGlow, DeathDropOverhaul gibi modlar
+// ForEachReferenceInRange sırasında bu yarı silinmiş referansa erişince null pointer
+// (rax=0x0) dereference ile çöküyordu.
+// Şimdi: doğrudan anchor üzerinde spawn et, ardından SetPosition ile konumla.
 static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionType faction, bool isBoss,
                                               float offsetX, float offsetY) {
-    const char* listEditorID = BanditSpawner::GetLeveledListEditorID(faction, isBoss);
     auto baseObj = GetFactionBaseObject(faction, isBoss);
 
     if (!baseObj) {
-        SKSE::log::error("  SPAWN FAILED: No leveled list or cached NPC found for faction={} boss={}",
+        SKSE::log::error("  SPAWN FAILED: No cached NPC found for faction={} boss={}",
                         static_cast<int>(faction), isBoss);
         return RE::ObjectRefHandle();
     }
@@ -360,52 +365,31 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
     targetPos.x += offsetX;
     targetPos.y += offsetY;
 
-    // 1. XMarker spawn et
-    auto xMarkerForm = RE::TESForm::LookupByID<RE::TESBoundObject>(0x0000003B); // XMarker
-    if (!xMarkerForm) {
-        // Fallback eger XMarker bulunamazsa (imkansiz ama guvenlik icin)
-        auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
-        return spawned ? spawned->GetHandle() : RE::ObjectRefHandle();
-    }
-
-    auto tempMarker = anchor->PlaceObjectAtMe(xMarkerForm, false);
-    if (!tempMarker) {
-        SKSE::log::error("  SPAWN FAILED: Could not create XMarker");
-        return RE::ObjectRefHandle();
-    }
-
-    // 2. Marker'i hedef konuma tasi (XMarker icin 3D yuklenmesine gerek yok)
-    tempMarker->SetPosition(targetPos);
-
-    // 3. NPC'yi marker uzerinde spawn et! Boylece tam istedigimiz yerde dogar.
-    auto spawned = tempMarker->PlaceObjectAtMe(baseObj, false);
+    // Doğrudan anchor üzerinde spawn et (XMarker yok = hayalet referans yok)
+    auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
     if (!spawned) {
-        SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null");
-        tempMarker->Disable();
-        tempMarker->DeleteThis();
+        SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null for '{}'", baseObj->GetName());
         return RE::ObjectRefHandle();
     }
+
+    // Hedef konuma taşı (3D yokken de çalışır, oyun 3D yüklenince uygular)
+    spawned->SetPosition(targetPos);
 
     auto handle = spawned->GetHandle();
 
-    // 4. Marker'i temizle
-    tempMarker->Disable();
-    tempMarker->DeleteThis();
-
     if (Settings::EnableLogging) {
-        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) formID=0x{:08X}",
-                        listEditorID, isBoss, offsetX, offsetY, spawned->GetFormID());
+        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) refID=0x{:08X}",
+                        baseObj->GetName(), isBoss, offsetX, offsetY, spawned->GetFormID());
     }
 
-    // LeveledList ile spawn edilen NPC'lerin handle'lari gecicidir ve asil Actor handle'i degildir.
-    // Ancak NPC zaten XMarker sayesinde dogru yerde dogdugu icin SetPosition'a ihtiyacimiz kalmadi.
-    // AI genelde kendi kendine baslar, yine de yakalayabilirsek FixActorAI cagiriyoruz.
-    if (handle) {
-        BanditSpawner::FixActorAI(handle, targetPos);
-    }
+    // FixActorAI KALDIRILDI (CRASH FIX):
+    // EvaluatePackage → DeathDropOverhaul crash, EnableAI → UnreadBooksGlow crash tetikliyordu.
+    // PlaceObjectAtMe ile spawn edilen aktörler AI'larını ve düşmanlıklarını
+    // Skyrim'in kendi sistemi aracılığıyla doğal olarak başlatır.
 
     return handle;
 }
+
 
 
 // ── Main spawn: Reinforcements ───────────────────────────────────
