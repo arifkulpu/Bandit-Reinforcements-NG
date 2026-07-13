@@ -81,13 +81,7 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     // ── İSİMSİZ DIŞ MEKAN KAMPI TESPİTİ ──────────────────────────────
     // ActorLocationChangeEvent isimsiz kamplar icin tetiklenmez.
     // Dış mekan hücresine girince hücreyi tara; eğer düşman NPC varsa spawn tetikle.
-    if (!isInterior && currentCellID != m_lastExteriorSpawnCellID) {
-        // SpawnTracker'da bu hücre zaten işlendiyse atla
-        if (!SpawnTracker::GetSingleton()->IsLocationReady(currentCellID)) {
-            return RE::BSEventNotifyControl::kContinue;
-        }
-
-        // Hücrede düşman NPC tara
+    if (!isInterior) {
         FactionType detectedFaction = FactionType::Unknown;
         int hostileCount = 0;
 
@@ -114,30 +108,58 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
             if (detectedFaction != FactionType::Unknown) {
                 hostileCount++;
-                if (hostileCount >= 2) break; // En az 2 düşman — gerçek bir kamp
+                break; // En az 1 düşman yeterli
             }
         }
 
-        if (detectedFaction != FactionType::Unknown && hostileCount >= 2) {
-            m_lastExteriorSpawnCellID = currentCellID;
-            SKSE::log::info(">> UNNAMED CAMP DETECTED in cell 0x{:08X} (faction={}, hostiles={})",
-                           currentCellID, static_cast<int>(detectedFaction), hostileCount);
+        if (detectedFaction != FactionType::Unknown && hostileCount >= 1) {
+            m_currentUnnamedFaction = detectedFaction;
 
-            BanditSpawner::UpdateCache(cell, detectedFaction);
+            if (currentCellID != m_lastExteriorSpawnCellID && SpawnTracker::GetSingleton()->IsLocationReady(currentCellID)) {
+                m_lastExteriorSpawnCellID = currentCellID;
+                SKSE::log::info(">> UNNAMED CAMP DETECTED in cell 0x{:08X} (faction={}, hostiles={})",
+                               currentCellID, static_cast<int>(detectedFaction), hostileCount);
 
-            auto taskInterface = SKSE::GetTaskInterface();
-            if (taskInterface) {
-                taskInterface->AddTask([currentCellID, detectedFaction]() {
-                    auto p = RE::PlayerCharacter::GetSingleton();
-                    if (!p) return;
-                    auto currentCell2 = p->GetParentCell();
-                    if (!currentCell2) return;
+                BanditSpawner::UpdateCache(cell, detectedFaction);
 
-                    auto spawnResult = BanditSpawner::SpawnReinforcements(currentCell2, detectedFaction);
-                    if (spawnResult.count > 0) {
-                        SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, spawnResult.spawnedActors);
-                    }
-                });
+                auto taskInterface = SKSE::GetTaskInterface();
+                if (taskInterface) {
+                    taskInterface->AddTask([currentCellID, detectedFaction]() {
+                        auto p = RE::PlayerCharacter::GetSingleton();
+                        if (!p) return;
+                        auto currentCell2 = p->GetParentCell();
+                        if (!currentCell2) return;
+
+                        auto spawnResult = BanditSpawner::SpawnReinforcements(currentCell2, detectedFaction);
+                        if (spawnResult.count > 0) {
+                            SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, spawnResult.spawnedActors);
+                        }
+                    });
+                }
+            }
+        } else {
+            // Hücrede düşman yok. İsmi olmayan bir kamptan mı çıktık?
+            if (m_currentUnnamedFaction != FactionType::Unknown) {
+                SKSE::log::info(">> UNNAMED CAMP LEAVE DETECTED! (faction={})", static_cast<int>(m_currentUnnamedFaction));
+                
+                auto ambushFaction = m_currentUnnamedFaction;
+                m_currentUnnamedFaction = FactionType::Unknown;
+
+                auto taskInterface = SKSE::GetTaskInterface();
+                if (taskInterface) {
+                    taskInterface->AddTask([ambushFaction]() {
+                        auto p = RE::PlayerCharacter::GetSingleton();
+                        if (!p) return;
+
+                        auto ambushResult = BanditSpawner::SpawnAmbush(ambushFaction, true); // kamp terkinde uzak mesafe
+                        if (ambushResult.count > 0) {
+                            auto trackID = p->GetParentCell() ? p->GetParentCell()->GetFormID() : 0;
+                            if (trackID != 0) {
+                                SpawnTracker::GetSingleton()->RegisterSpawn(trackID, ambushResult.spawnedActors);
+                            }
+                        }
+                    });
+                }
             }
         }
     }
@@ -200,6 +222,9 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     }
 
     SKSE::log::info("=== ActorLocationChange: NewLoc=0x{:08X} ===", newLoc->GetFormID());
+    
+    // We entered a named location, so we are no longer in an unnamed camp
+    m_currentUnnamedFaction = FactionType::Unknown;
 
     auto faction = BanditSpawner::GetFactionFromLocation(newLoc);
     if (faction == FactionType::Unknown) {

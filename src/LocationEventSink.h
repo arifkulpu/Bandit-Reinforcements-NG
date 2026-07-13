@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RE/Skyrim.h>
+#include "BanditSpawner.h"
 
 class LocationEventSink : 
     public RE::BSTEventSink<RE::TESCellAttachDetachEvent>,
@@ -29,4 +30,7 @@ private:
 
     // Disik kamp tespiti: Son spawn yapilan exterior cell
     RE::FormID m_lastExteriorSpawnCellID = 0;
+    
+    // Su an isimsiz bir kampta miyiz (hostileCount >= 1 tespit edilmisse)
+    FactionType m_currentUnnamedFaction = FactionType::Unknown;
 };
