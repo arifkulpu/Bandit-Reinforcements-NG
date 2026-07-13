@@ -96,7 +96,10 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         // Bu yuzden sadece eklentilerden gelen statik formlari (0x00 - 0xFE) kabul etmeliyiz.
         if (baseObj->GetFormID() >= 0xFF000000) continue;
         
-        // Faction kontrolü yapalım (Örn: BanditFaction = 0x1BCC0, VampireFaction = 0x27242)
+        // Dead actors: only useful as anchors, not as cache templates. Skip dead.
+        if (actor->IsDead()) continue;
+        
+        // Faction kontrolü yapalım (Öncelik: vanilla faction ID'leri)
         bool isCorrectFaction = false;
         actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
             if (f) {
@@ -104,25 +107,41 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                 if (faction == FactionType::Bandit && fID == 0x0001BCC0) isCorrectFaction = true;
                 else if (faction == FactionType::Vampire && fID == 0x00027242) isCorrectFaction = true;
                 else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
-                else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true; // WarlockFaction
-                else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true; // DraugrFaction
-                else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true; // Predator/Spider
-                else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true; // FalmerFaction
-                else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true; // AutomatonFaction
+                else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
+                else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
+                else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true;
+                else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
+                else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
+                // PlayerFaction veya PlayerAllyFaction'a sahipse kesinlikle dost NPC - reddet
+                else if (fID == 0x0005C84E || fID == 0x00019809) { isCorrectFaction = false; return true; }
             }
             return false;
         });
 
-        // Fallback: Eğer faction'u kesin bilemezsek ama NPC ise ve düşmansa/ölüyse kabul et!
+        // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
+        // IsHostileToActor() yerine combatStyle tercih ediyoruz çünkü:
+        // - Savaş başlamadan önce IsHostileToActor() false döner (haydutlar fark etmemiş)
+        // - Bandit War.esp gibi modlar farklı faction ID kullanır
+        // - CombatStyle'ı olan, guard olmayan, essential olmayan herhangi bir NPC potansiyel düşmandır
         if (!isCorrectFaction) {
-            auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794); // ActorTypeNPC
-            bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
-            if (faction == FactionType::Draugr || faction == FactionType::Animal || faction == FactionType::Dwemer) {
-                isNPC = true; // Bunlar Creature'dır
-            }
+            bool isEssential = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential);
+            bool isProtected = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected);
+            bool hasCombatStyle = (baseObj->combatStyle != nullptr);
+            bool isGuard = actor->IsGuard();
 
-            if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
+            // Creature ise (Draugr/Animal/Falmer/Dwemer) faction ID kontrolü çok güvenilmez,
+            // combatStyle yeterli.
+            bool isCreatureFaction = (faction == FactionType::Draugr ||
+                                      faction == FactionType::Animal ||
+                                      faction == FactionType::Falmer ||
+                                      faction == FactionType::Dwemer);
+
+            if (hasCombatStyle && !isGuard && (!isEssential || isCreatureFaction) && !isProtected) {
                 isCorrectFaction = true;
+                if (Settings::EnableLogging) {
+                    SKSE::log::info("    - CombatStyle fallback accepted: '{}' (BaseID: 0x{:08X})",
+                        baseObj->GetName(), baseObj->GetFormID());
+                }
             }
         }
 
@@ -389,7 +408,7 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
 SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionType faction) {
     SpawnResult result{ {}, 0 };
     auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return result; // Sadece player null ise dön. Cell null olabilir!
+    if (!player) return result;
 
     int count = GetSpawnCount();
     bool isInterior = cell ? cell->IsInteriorCell() : false;
@@ -397,6 +416,23 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     SKSE::log::info("=== SpawnReinforcements ===");
     SKSE::log::info("  Count={}, Faction={}, Interior={}, Cell=0x{:08X}", 
                     count, static_cast<int>(faction), isInterior, cell ? cell->GetFormID() : 0);
+
+    // Cache'i spawn döngüsünden ÖNCE bir kez doldur (her spawn için ayrı ayrı taramak yerine)
+    // Bu hem performansı artırır hem de hata ayıklamayı kolaylaştırır.
+    if (cell) {
+        UpdateCache(cell, faction);
+        auto& cacheCheck = GetCacheForFaction(faction);
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  Pre-spawn cache: Faction {} has {} cached NPC templates",
+                static_cast<int>(faction), cacheCheck.size());
+        }
+        if (cacheCheck.empty()) {
+            SKSE::log::error("  ABORTING: No NPC templates found for Faction {} in cell 0x{:08X}. "
+                             "Are there any living enemies here?",
+                             static_cast<int>(faction), cell->GetFormID());
+            return result;
+        }
+    }
 
     auto& rng = GetRNG();
 
@@ -427,13 +463,16 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
             totalBossCount, bossInfo.guaranteed, bossInfo.extraChance, pLevel);
     }
 
-    // Anchor'lari topla: Hucrede halihazirda var olan hedefe ait faction dusmanlari (olu veya diri)
+    // Anchor'lari topla: Hucrede halihazirda var olan dusmanlari konum referansi olarak kullan.
+    // NOT: Anchor sadece KONUM icin kullanilir. Cache'deki NPC template'i spawn icin kullanilir.
+    // Bu nedenle anchor arama kosullari UpdateCache ile ayni olmalı.
     std::vector<RE::TESObjectREFR*> anchors;
     if (cell) {
         for (auto& ref : cell->GetRuntimeData().references) {
             if (!ref) continue;
             auto actor = ref->As<RE::Actor>();
             if (!actor || actor == player) continue;
+            if (actor->IsDead()) continue; // Olü aktörler konum referansı için işe yaramaz
             
             auto baseObj = actor->GetActorBase();
             if (!baseObj) continue;
@@ -450,18 +489,18 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
                     else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true;
                     else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
                     else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
+                    else if (fID == 0x0005C84E || fID == 0x00019809) { isCorrectFaction = false; return true; } // PlayerFaction -> reddet
                 }
                 return false;
             });
             
+            // Geniş fallback: combatStyle kontrolü
             if (!isCorrectFaction) {
-                auto kwdNPC = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00013794);
-                bool isNPC = (kwdNPC && actor->HasKeyword(kwdNPC));
-                if (faction == FactionType::Draugr || faction == FactionType::Animal || faction == FactionType::Dwemer) {
-                    isNPC = true;
-                }
-
-                if (isNPC && (actor->IsHostileToActor(player) || actor->IsDead())) {
+                bool isEssential = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential);
+                bool isProtected = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected);
+                bool hasCombatStyle = (baseObj->combatStyle != nullptr);
+                bool isGuard = actor->IsGuard();
+                if (hasCombatStyle && !isGuard && !isEssential && !isProtected) {
                     isCorrectFaction = true;
                 }
             }
@@ -475,6 +514,7 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     if (Settings::EnableLogging) {
         SKSE::log::info("  Found {} existing valid anchors in the cell.", anchors.size());
     }
+
 
     for (int i = 0; i < count; ++i) {
         bool isBoss = (i < totalBossCount);
