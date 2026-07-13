@@ -10,7 +10,6 @@ extern "C" void __std_regex_transform_primary_char() {}
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
         BanditSpawner::DumpLeveledLists();
-        BanditSpawner::LoadCache();
     }
 }
 

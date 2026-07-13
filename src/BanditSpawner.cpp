@@ -10,84 +10,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// ── Cache Persistence ──────────────────────────────────────────────
-void BanditSpawner::SaveCache() {
-    std::ofstream file("Data/SKSE/Plugins/BanditReinforcementsNG_Cache.txt", std::ios::trunc);
-    if (!file.is_open()) return;
 
-    for (int i = 0; i < static_cast<int>(FactionType::Unknown); ++i) {
-        FactionType faction = static_cast<FactionType>(i);
-        auto& cache = GetCacheForFaction(faction);
-        for (auto* form : cache) {
-            if (!form) continue;
-            auto tesFile = form->GetFile(0);
-            if (!tesFile) continue; // Skip dynamic forms created at runtime (e.g., OBIS extra spawns)
-            
-            std::string pluginName(tesFile->GetFilename());
-            RE::FormID localID = form->GetLocalFormID();
-            
-            // Format: FactionID|PluginName|LocalFormID
-            file << static_cast<int>(faction) << "|" << pluginName << "|" << std::hex << localID << std::dec << "\n";
-        }
-    }
-    file.close();
-}
-
-void BanditSpawner::LoadCache() {
-    std::ifstream file("Data/SKSE/Plugins/BanditReinforcementsNG_Cache.txt");
-    if (!file.is_open()) return;
-
-    auto dataHandler = RE::TESDataHandler::GetSingleton();
-    if (!dataHandler) return;
-
-    std::string line;
-    int loadedCount = 0;
-    while (std::getline(file, line)) {
-        if (line.empty()) continue;
-        
-        std::stringstream ss(line);
-        std::string factionStr, pluginName, formIdStr;
-        
-        if (std::getline(ss, factionStr, '|') &&
-            std::getline(ss, pluginName, '|') &&
-            std::getline(ss, formIdStr)) 
-        {
-            try {
-                int factionInt = std::stoi(factionStr);
-                RE::FormID localID = std::stoul(formIdStr, nullptr, 16);
-                
-                RE::FormID fullID = dataHandler->LookupFormID(localID, pluginName);
-                if (fullID != 0 && fullID < 0xFF000000) {
-                    auto form = RE::TESForm::LookupByID(fullID);
-                    if (form) {
-                        auto baseObj = form->As<RE::TESBoundObject>();
-                        if (baseObj && baseObj->GetFormID() < 0xFF000000) {
-                            FactionType faction = static_cast<FactionType>(factionInt);
-                            auto& cache = GetCacheForFaction(faction);
-                            
-                            // Prevent duplicates
-                            bool exists = false;
-                            for (auto* cached : cache) {
-                                if (cached == baseObj) { exists = true; break; }
-                            }
-                            if (!exists) {
-                                cache.push_back(baseObj);
-                                loadedCount++;
-                            }
-                        }
-                    }
-                }
-            } catch (...) {
-                // Ignore parse errors for single lines
-            }
-        }
-    }
-    file.close();
-
-    if (Settings::EnableLogging && loadedCount > 0) {
-        SKSE::log::info("=== LOADED {} NPC base objects from persistent cache ===", loadedCount);
-    }
-}
 
 // ── Thread-local RNG ──────────────────────────────────────────────
 std::mt19937& BanditSpawner::GetRNG() {
@@ -234,7 +157,6 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         if (Settings::EnableLogging) {
             SKSE::log::info("  UpdateCache: Faction {} cache size is now {}", static_cast<int>(faction), cache.size());
         }
-        SaveCache();
     }
 }
 
