@@ -33,8 +33,10 @@ Gelen grupların arasında bir Lider (Boss) bulunması oyuncu seviyesine göre d
 - **Seviye 25–49:** 1 Boss **garanti** doğar + %30 ihtimalle 2. Boss da çıkar.
 - **Seviye 50+:** 2 Boss **garanti** doğar + %40 ihtimalle 3. Boss da çıkar.
 
-#### 🏹 Pusu Mekaniği (Dungeon Ambushes)
-Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir **pusu/intikam grubu** doğabilir. Bu pusular zindandan dışarı adım attığınız anda doğrudan **çok yakınınızda** (150-300 birim) belirerek sürpriz yaparlar! Açık dünya kamplarından ayrılırken ise uzaktan koşarak gelirler. Pusu şansı INI dosyasından ayarlanabilir (varsayılan: %30).
+#### 🏹 Pusu Mekaniği (Ambushes) & İsimsiz Kamplar
+- **Zindan Çıkış Pususu:** Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir intikam grubu doğabilir (150-300 birim yakında).
+- **Açık Dünya Pususu:** Düşman alanlarından ayrılıp vahşi doğaya çıktığınızda düşmanlar arkanızdan pusu kurmak üzere takibe başlayabilir.
+- **İsimsiz Vahşi Doğa Kampları (Yeni):** Haritada resmi bir adı veya etiketi olmayan, ancak etrafta **en az 1 adet** düşmanın bulunduğu yıkık dökük alanlar da mod tarafından otomatik tespit edilir. Buralara girdiğinizde ekstra asker çağırılır, buralardan çıkarken de pusu yeme ihtimaliniz vardır!
 
 #### 📊 Seviye Ölçeklendirmesi
 Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir (Seviye 10 altındayken fazladan düşman/pusu asla çıkmaz):
@@ -43,8 +45,10 @@ Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir (Seviye 1
 - Seviye 25–49: 1 ile 10 arası takviye.
 - Seviye 50+: 1 ile 15 arası takviye.
 
-#### ⚡ Performans Dostu (Zero-Overhead)
-Sistem arkada sürekli bir "Update" döngüsü çalıştırmaz. Sadece oyuncu yeni bir hücreye (Cell) girdiğinde durumu kontrol eder (**Lazy Evaluation**). Bu sayede FPS düşüşü yaşanmaz.
+#### ⚡ Performans & Kararlılık (Zero-Overhead & XMarker Spawning)
+- Sadece oyuncu yeni bir hücreye girdiğinde kontrol yapan **Lazy Evaluation** sistemi ile sıfır FPS kaybı yaşatır.
+- NPC doğma (spawning) işlemi görünmez "XMarker" referansları kullanılarak **Frame-Perfect** bir şekilde yapılır. Bu sayede oyunda havada asılı kalan (T-pose) veya görünmez NPC sorunları tamamen çözülmüştür.
+- Dinamik Kopyalama belleği (RAM) üzerinde çalışır, diske hiçbir kayıt (`.txt`) atmaz. Böylece oyununuzun Save dosyası asla bozulmaz (0xFF referans çökmesi yaşanmaz) ve tamamen güvenlidir.
 
 #### ⏱️ Bekleme Süresi (Cooldown)
 - **Temizlenen kamplar:** 10 oyun içi gün boyunca yeni düşman eklenmez.
@@ -59,12 +63,12 @@ Tüm ayarlar `BanditReinforcementsNG.ini` dosyasından özelleştirilebilir:
 - Fraksiyon açma/kapama
 
 #### 🤝 Mod Uyumluluğu ve "Dinamik Kopyalama"
-Mod artık **Dinamik Kopyalama Sistemi (Dynamic Cache)** ile çalışıyor. Bir mekana girdiğinizde içerideki düşmanları sessizce tarar ve onların sınıf özelliklerini (okçu, büyücü vb.) hafızasına alır. Doğurduğu takviyeler bizzat zindandaki mevcut düşmanların birebir kopyaları olur!
+Mod, diske yazmayan güvenli bir **Dinamik Kopyalama Sistemi (Dynamic Cache)** ile çalışır. Bir mekana girdiğinizde içerideki düşmanları sessizce tarar ve onların sınıf özelliklerini hafızasına alır. Doğurduğu takviyeler bizzat zindandaki mevcut düşmanların birebir kopyaları olur!
 - **OBIS** (Organized Bandits In Skyrim)
 - **Lawless** (A Bandit Overhaul)
 - **SPID** (Spell Perk Item Distributor)
 - Bu modlarla **otomatik olarak %100 uyumludur**. Takviyeler doğrudan bu modların kendine has kıyafetlerine/isimlerine sahip düşmanlar olarak doğar!
-- Zindan içerisinde doğan takviyeler doğrudan diğer düşmanların hemen **dibinde/yanında** belirir (rastgele saçılmak yerine onlarla grup olurlar).
+- Zindan içerisinde doğan takviyeler rastgele saçılmak yerine var olan diğer düşmanların hemen **dibinde/yanında** belirir ve doğdukları ortamdaki eşyalarla/sandalyelerle anında etkileşime girerler (Sandbox AI).
 
 ### Kurulum
 1. [SKSE](http://skse.silverlock.org/)'nin sürümünüze uygun versiyonunun kurulu olduğundan emin olun.
@@ -106,8 +110,10 @@ The chance and number of **Bosses** (Bandit Chief, Vampire Lord, etc.) in a grou
 - **Levels 25–49:** 1 Boss **guaranteed** + 30% chance for a 2nd Boss.
 - **Levels 50+:** 2 Bosses **guaranteed** + 40% chance for a 3rd Boss.
 
-#### 🏹 Dungeon Ambushes
-After clearing a dungeon and exiting, a **revenge/ambush group** may spawn at the entrance. Dungeon exit ambushes spawn **extremely close** to the player (150-300 units) for a surprise jump! Outdoor camp ambushes will still run towards you from a distance. Ambush chance is configurable (default: 30%).
+#### 🏹 Ambushes & Unnamed Camps
+- **Dungeon Exit Ambushes:** After clearing a dungeon and exiting, a revenge group may spawn extremely close to the entrance (150-300 units).
+- **Open World Ambushes:** Escaping from enemy locations triggers pursuit from hostile forces.
+- **Unnamed Wilderness Camps (New):** Even if an area has no official location tag, if the mod detects **at least 1 hostile enemy** organically waiting in the wild, it dynamically treats it as an "Unnamed Camp", triggering both reinforcements and ambushes upon leaving!
 
 #### 📊 Level Scaling
 Maximum extra enemies strictly scale with player level (no spawns under level 10):
@@ -116,8 +122,10 @@ Maximum extra enemies strictly scale with player level (no spawns under level 10
 - Levels 25–49: 1 to 10 extra enemies.
 - Levels 50+: 1 to 15 extra enemies.
 
-#### ⚡ Performance Friendly (Zero-Overhead)
-The mod uses **Lazy Evaluation** — no constant background update loop. Logic only runs when the player enters a new cell. Zero FPS impact.
+#### ⚡ Performance & Stability (Zero-Overhead & XMarker Spawning)
+- The mod uses **Lazy Evaluation** logic only when the player enters a new cell. Zero FPS impact.
+- Spawning relies on hidden "XMarkers" for **Frame-Perfect placement**, completely eradicating vanilla engine bugs like T-posing or invisible NPCs!
+- Dynamic caching is done 100% in-memory without persistent disk I/O, guaranteeing that your save file remains corruption-free (eliminating 0xFF invalid form crashes).
 
 #### ⏱️ Cooldown System
 - **Cleared Camps:** 10 in-game day cooldown before new enemies spawn.
@@ -132,12 +140,12 @@ All settings are customizable via `BanditReinforcementsNG.ini`:
 - Per-faction enable/disable toggles
 
 #### 🤝 Mod Compatibility & "Dynamic Cache"
-The mod now uses a **Dynamic Caching System**. When you enter a dungeon, it silently scans the existing enemies (archers, mages, bruisers) and memorizes them. The reinforcements it spawns are **perfect copies** of the enemies already present in the dungeon!
+The mod uses a completely safe in-memory **Dynamic Caching System**. When you enter a dungeon, it silently scans the existing enemies and memorizes them. The reinforcements it spawns are **perfect copies** of the enemies already present!
 - **OBIS** (Organized Bandits In Skyrim)
 - **Lawless** (A Bandit Overhaul)
 - **SPID** (Spell Perk Item Distributor)
 - It is **100% automatically compatible** with these mods out of the box! Reinforcements will spawn wearing the exact custom armors and names from your overhauls.
-- Reinforcements spawned inside dungeons will cluster **directly next to existing enemies** rather than spawning randomly at the entrance.
+- Reinforcements spawned inside dungeons will cluster **directly next to existing enemies** and immediately engage with the environment (Sandbox AI) rather than spawning randomly at the entrance.
 
 ### Installation
 1. Ensure you have the appropriate version of [SKSE](http://skse.silverlock.org/) installed.
