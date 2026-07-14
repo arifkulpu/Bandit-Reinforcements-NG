@@ -100,7 +100,7 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
                 if (fID == 0x00030C66 && Settings::EnableWarlocks)  { detectedFaction = FactionType::Warlock;  return true; }
                 if (fID == 0x00043599 && Settings::EnableForsworn)  { detectedFaction = FactionType::Forsworn; return true; }
                 if (fID == 0x0002430D && Settings::EnableDraugr)    { detectedFaction = FactionType::Draugr;   return true; }
-                if ((fID == 0x0001CB62 || fID == 0x00028FDF) && Settings::EnableAnimals) { detectedFaction = FactionType::Animal; return true; }
+                if ((fID == 0x0001CB62 || fID == 0x00028FDF || fID == 0x0002C6C8 || fID == 0x00043596 || fID == 0x0004359A || fID == 0x00043598 || fID == 0x00043594 || fID == 0x00043595 || fID == 0x00043597) && Settings::EnableAnimals) { detectedFaction = FactionType::Animal; return true; }
                 if (fID == 0x0002446A && Settings::EnableFalmer)    { detectedFaction = FactionType::Falmer;   return true; }
                 if (fID == 0x0001BCC1 && Settings::EnableDwemer)    { detectedFaction = FactionType::Dwemer;   return true; }
                 return false;

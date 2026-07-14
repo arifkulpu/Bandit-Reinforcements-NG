@@ -91,14 +91,25 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         
         auto baseObj = actor->GetActorBase();
         if (!baseObj) continue;
+
+        if (Settings::EnableLogging) {
+            SKSE::log::info("    - Inspecting Actor: refID=0x{:08X}, baseID=0x{:08X}, name='{}', isDead={}",
+                            ref->GetFormID(), baseObj->GetFormID(), baseObj->GetName(), actor->IsDead());
+        }
         
         // 0xFF ile baslayan formlar (ornegin 0xFF00113C) oyun icerisinde olusturulmus gecici kopyalardir (Runtime Temporary).
         // Bu formlardan NPC uretip (PlaceObjectAtMe) ardindan oyunu kaydedersek save dosyasi bozulur ve Save Load Crash yasanir!
         // Bu yuzden sadece eklentilerden gelen statik formlari (0x00 - 0xFE) kabul etmeliyiz.
-        if (baseObj->GetFormID() >= 0xFF000000) continue;
+        if (baseObj->GetFormID() >= 0xFF000000) {
+            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Runtime form (0xFF...)");
+            continue;
+        }
         
         // Dead actors: only useful as anchors, not as cache templates. Skip dead.
-        if (actor->IsDead()) continue;
+        if (actor->IsDead()) {
+            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Dead");
+            continue;
+        }
         
         // Faction kontrolü yapalım (Öncelik: vanilla faction ID'leri)
         bool isCorrectFaction = false;
@@ -110,7 +121,17 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                 else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
                 else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
                 else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
-                else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true;
+                else if (faction == FactionType::Animal && (
+                    fID == 0x0001CB62 || // AnimalFaction
+                    fID == 0x00028FDF || // PredatorFaction
+                    fID == 0x0002C6C8 || // TrollFaction
+                    fID == 0x00043596 || // SpiderFaction
+                    fID == 0x0004359A || // ChaurusFaction
+                    fID == 0x00043598 || // SprigganFaction
+                    fID == 0x00043594 || // BearFaction
+                    fID == 0x00043595 || // SabreCatFaction
+                    fID == 0x00043597    // MudcrabFaction
+                )) isCorrectFaction = true;
                 else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
                 else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
                 // PlayerFaction veya PlayerAllyFaction'a sahipse kesinlikle dost NPC - reddet
@@ -119,11 +140,22 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             return false;
         });
 
+        // ── KESİN DÜŞMANLIK KONTROLÜ (BUG FIX) ──
+        // NPC'nin oyuncuya karşı gerçekten düşmanca bir tavır sergileyip sergilemediğini kontrol et.
+        // SRC (Skyrim Realistic Conquering) gibi modlar zindanları "dost madencilere" (Embershard Miner)
+        // çevirdiğinde, bu madencilerin combatStyle'ı olsa bile oyuncuya dostturlar.
+        // IsHostileToActor() Faction ilişkilerine bakar, savaş başlamamış olsa bile doğru döner.
+        bool isHostile = actor->IsHostileToActor(player);
+
+        if (!isHostile) {
+            if (Settings::EnableLogging) {
+                SKSE::log::info("      -> SKIPPED: Not Hostile to Player");
+            }
+            continue;
+        }
+
         // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
-        // IsHostileToActor() yerine combatStyle tercih ediyoruz çünkü:
-        // - Savaş başlamadan önce IsHostileToActor() false döner (haydutlar fark etmemiş)
-        // - Bandit War.esp gibi modlar farklı faction ID kullanır
-        // - CombatStyle'ı olan, guard olmayan, essential olmayan herhangi bir NPC potansiyel düşmandır
+        // Zaten isHostile == true olduğu için kesinlikle düşman olduklarını biliyoruz.
         if (!isCorrectFaction) {
             bool isEssential = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential);
             bool isProtected = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected);
