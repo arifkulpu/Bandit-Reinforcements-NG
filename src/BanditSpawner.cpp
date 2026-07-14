@@ -3,8 +3,9 @@
 #include <random>
 #include <cmath>
 #include <SKSE/SKSE.h>
-#include <fstream>
+#include <SimpleIni.h>
 #include <sstream>
+#include <set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -208,20 +209,6 @@ BossSpawnInfo GetBossSpawnInfo(int pLevel) {
     return                     {0, Settings::BossChanceLevel10_24};  // 0 garanti + %20 sans
 }
 
-// ── Map faction → leveled list EditorID ──────────────────────────
-const char* BanditSpawner::GetLeveledListEditorID(FactionType faction, bool isBoss) {
-    switch (faction) {
-        case FactionType::Bandit:   return isBoss ? "LCharBanditBoss" : "LCharBanditMeleeAny";
-        case FactionType::Vampire:  return isBoss ? "LCharVampireBoss" : "LCharVampire";
-        case FactionType::Warlock:  return isBoss ? "LCharWarlockBoss" : "LCharWarlock";
-        case FactionType::Forsworn: return isBoss ? "LCharForswornBoss" : "LCharForsworn";
-        case FactionType::Draugr:   return isBoss ? "LCharDraugrBoss" : "LCharDraugrMeleeAny";
-        case FactionType::Animal:   return "LCharAnimalPredator"; // Default generic
-        case FactionType::Falmer:   return isBoss ? "LCharFalmerBoss" : "LCharFalmerAny";
-        case FactionType::Dwemer:   return "LCharDwarvenAutomatonMelee";
-        default:                    return "LCharBanditAny";
-    }
-}
 
 // ── Fallback FormIDs for vanilla leveled lists ───────────────────
 // DEĞİŞİKLİK (CRASH FIX): OBody, SimpleDualSheath gibi 3D Hook kullanan modların 
@@ -299,47 +286,158 @@ FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     return FactionType::Unknown;
 }
 
-// ── Post-spawn AI fix (called on game thread via TaskInterface) ───
-// ── Post-spawn AI fix + pozisyon taşıma ─────────────────────────
-// PlaceObjectAtMe sonrası 3D yüklenene kadar bekle, sonra AI başlat.
-// NOT (CRASH FIX): EvaluatePackage() ve UpdateCombat() KASITLI OLARAK KALDIRILDI.
-// Bu çağrılar DeathDropOverhaul gibi modların MaintainLoadedCells fonksiyonunu
-// tetikleyerek henüz tam başlatılmamış aktörü (ExtraDataList._data = garbage) okumasına
-// ve EXCEPTION_ACCESS_VIOLATION'a neden oluyordu.
-// Aktör zaten XMarker sayesinde doğru konumda spawn edildiğinden,
-// EnableAI(true) çağrısı AI'nın doğal olarak başlaması için yeterlidir.
-void BanditSpawner::FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPos, int retries) {
-    auto taskInterface = SKSE::GetTaskInterface();
-    if (!taskInterface) return;
+// ── INI-backed NPC FormID persistence ────────────────────────────
+// Faction'a karşılık gelen INI anahtarını döndür
+static const char* FactionToINIKey(FactionType f) {
+    switch (f) {
+        case FactionType::Bandit:   return "Bandit";
+        case FactionType::Vampire:  return "Vampire";
+        case FactionType::Warlock:  return "Warlock";
+        case FactionType::Forsworn: return "Forsworn";
+        case FactionType::Draugr:   return "Draugr";
+        case FactionType::Animal:   return "Animal";
+        case FactionType::Falmer:   return "Falmer";
+        case FactionType::Dwemer:   return "Dwemer";
+        default:                    return nullptr;
+    }
+}
 
-    taskInterface->AddTask([handle, targetPos, retries]() {
-        auto ref = handle.get();
-        if (!ref) return;
+// Noktalı virgül ile ayrılmış hex FormID string'ini parse eder, formlara bakıp cache'e ekler.
+static void ParseAndAddToCache(const char* csvStr, FactionType faction) {
+    if (!csvStr || csvStr[0] == '\0') return;
+    auto& cache = BanditSpawner::GetCacheForFaction(faction);
 
-        auto actor = ref->As<RE::Actor>();
-        if (!actor || actor->IsDead()) return;
+    std::istringstream ss(csvStr);
+    std::string token;
+    int added = 0, skipped = 0;
+    while (std::getline(ss, token, ';')) {
+        // Trim whitespace
+        auto trim = [](std::string& s) {
+            while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+            while (!s.empty() && (s.back()  == ' ' || s.back()  == '\t')) s.pop_back();
+        };
+        trim(token);
+        if (token.empty()) continue;
 
-        // 3D yuklenmesini bekle (max 60 deneme = ~1 saniye)
-        if (!actor->Is3DLoaded()) {
-            if (retries < 60) {
-                BanditSpawner::FixActorAI(handle, targetPos, retries + 1);
-                return;
-            }
-            if (Settings::EnableLogging) {
-                SKSE::log::warn("  FixActorAI: 3D not loaded after 60 retries for 0x{:08X}, proceeding anyway",
-                                actor->GetFormID());
+        // Parse hex FormID (supports 0x prefix or raw hex)
+        RE::FormID fid = 0;
+        try { fid = static_cast<RE::FormID>(std::stoul(token, nullptr, 16)); }
+        catch (...) { ++skipped; continue; }
+
+        // Runtime FormID'leri (0xFF...) yüklemeyi atla - bunlar önceki oturumda spawn edilenlerdi
+        if (fid >= 0xFF000000) { ++skipped; continue; }
+
+        auto* form = RE::TESForm::LookupByID<RE::TESBoundObject>(fid);
+        if (!form) { ++skipped; continue; }
+
+        // TESNPC olduğunu doğrula
+        if (!form->As<RE::TESNPC>()) { ++skipped; continue; }
+
+        // Zaten cache'de var mı?
+        auto it = std::find(cache.begin(), cache.end(), form);
+        if (it != cache.end()) { ++skipped; continue; }
+
+        cache.push_back(form);
+        ++added;
+    }
+    if (Settings::EnableLogging && (added > 0 || skipped > 0)) {
+        SKSE::log::info("  LoadCachedFormIDs [{}]: +{} loaded, {} skipped",
+                        FactionToINIKey(faction), added, skipped);
+    }
+}
+
+void BanditSpawner::LoadCachedFormIDs() {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    if (ini.LoadFile(Settings::INI_PATH) != SI_OK) {
+        SKSE::log::info("LoadCachedFormIDs: INI not found or unreadable, skipping.");
+        return;
+    }
+
+    constexpr FactionType factions[] = {
+        FactionType::Bandit, FactionType::Vampire, FactionType::Warlock,
+        FactionType::Forsworn, FactionType::Draugr, FactionType::Animal,
+        FactionType::Falmer, FactionType::Dwemer
+    };
+
+    for (auto f : factions) {
+        const char* key = FactionToINIKey(f);
+        if (!key) continue;
+        const char* val = ini.GetValue("CachedNPCs", key, nullptr);
+        if (val) ParseAndAddToCache(val, f);
+    }
+    SKSE::log::info("LoadCachedFormIDs: complete.");
+}
+
+void BanditSpawner::SaveCachedFormIDs() {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    // Mevcut INI'yi oku (diğer section'ları bozmamak için)
+    ini.LoadFile(Settings::INI_PATH);
+
+    constexpr FactionType factions[] = {
+        FactionType::Bandit, FactionType::Vampire, FactionType::Warlock,
+        FactionType::Forsworn, FactionType::Draugr, FactionType::Animal,
+        FactionType::Falmer, FactionType::Dwemer
+    };
+
+    for (auto f : factions) {
+        const char* key = FactionToINIKey(f);
+        if (!key) continue;
+
+        auto& cache = GetCacheForFaction(f);
+        if (cache.empty()) continue;
+
+        // Mevcut kayıtlı ID'leri oku
+        std::string existing;
+        const char* exVal = ini.GetValue("CachedNPCs", key, nullptr);
+        if (exVal) existing = exVal;
+
+        // Mevcut ID'leri set'e ekle
+        std::set<RE::FormID> known;
+        {
+            std::istringstream ss(existing);
+            std::string tok;
+            while (std::getline(ss, tok, ';')) {
+                if (tok.empty()) continue;
+                try { known.insert(static_cast<RE::FormID>(std::stoul(tok, nullptr, 16))); }
+                catch (...) {}
             }
         }
 
-        // 3D yuklendi (veya timeout) - sadece AI'yi etkinlestir.
-        // MoveToHigh, EvaluatePackage, UpdateCombat KALDIRILDI - crash riski taşıyor.
-        actor->EnableAI(true);
-
-        if (Settings::EnableLogging) {
-            SKSE::log::info("  FixActorAI: Actor 0x{:08X} AI enabled (retries={})",
-                            actor->GetFormID(), retries);
+        // Cache'deki yeni ID'leri ekle
+        bool dirty = false;
+        for (auto* obj : cache) {
+            if (!obj) continue;
+            RE::FormID fid = obj->GetFormID();
+            if (fid >= 0xFF000000) continue; // runtime referans, kaydetme
+            if (known.count(fid)) continue;  // zaten kayıtlı
+            known.insert(fid);
+            dirty = true;
         }
-    });
+
+        if (!dirty) continue;
+
+        // Yeni string oluştur
+        std::string result;
+        result.reserve(known.size() * 10);
+        for (RE::FormID fid : known) {
+            if (!result.empty()) result += ';';
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%08X", fid);
+            result += buf;
+        }
+
+        ini.SetValue("CachedNPCs", key, result.c_str(),
+            "; Otomatik keşfedilen NPC FormID'leri - elle düzenleme YAPMAYIN");
+    }
+
+    SI_Error rc = ini.SaveFile(Settings::INI_PATH);
+    if (rc == SI_OK) {
+        SKSE::log::info("SaveCachedFormIDs: INI updated.");
+    } else {
+        SKSE::log::error("SaveCachedFormIDs: INI save FAILED (error={}).", static_cast<int>(rc));
+    }
 }
 
 

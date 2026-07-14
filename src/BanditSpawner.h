@@ -35,11 +35,13 @@ public:
     // Determine faction type from a BGSLocation's keywords
     static FactionType GetFactionFromLocation(RE::BGSLocation* loc);
 
-    // Get the EditorID of the leveled character list for a faction
-    static const char* GetLeveledListEditorID(FactionType faction, bool isBoss);
+    // INI'ye keşfedilen NPC FormID'lerini kaydet (kSaveGame'de çağır)
+    // Mevcut kayıtla merge eder; aynı ID'ler tekrar eklenmez.
+    static void SaveCachedFormIDs();
 
-    // Post-spawn: 3D yuklendikten sonra konuma taşı ve AI başlat
-    static void FixActorAI(RE::ObjectRefHandle handle, RE::NiPoint3 targetPos, int retries = 0);
+    // INI'den kayıtlı NPC FormID'lerini cache'e yükle (kDataLoaded'da çağır)
+    // Böylece oyun başında hücre taranmadan önce bile template'lar hazır olur.
+    static void LoadCachedFormIDs();
 
     // Dump all leveled list FormIDs to the log (call during kDataLoaded)
     static void DumpLeveledLists();

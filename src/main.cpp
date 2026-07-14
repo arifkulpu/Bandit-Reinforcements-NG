@@ -9,9 +9,20 @@ extern "C" void __std_regex_transform_primary_char() {}
 
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
+        // Tüm ESM/ESP yüklendikten sonra:
+        // 1. Leveled list debug dump
         BanditSpawner::DumpLeveledLists();
+        // 2. INI'den önceki oturumlarda keşfedilen NPC'leri cache'e yükle.
+        //    Böylece ilk ziyaretten önce bile cache hazır olur.
+        BanditSpawner::LoadCachedFormIDs();
+    }
+    else if (message->type == SKSE::MessagingInterface::kSaveGame) {
+        // Oyuncu kaydettiğinde: yeni keşfedilen NPC'leri INI'ye yaz (merge).
+        // Bu işlem sadece kayıt sırasında çalışır, gameplay'i etkilemez.
+        BanditSpawner::SaveCachedFormIDs();
     }
 }
+
 
 void InitListener() {
     LocationEventSink::GetSingleton()->Register();
