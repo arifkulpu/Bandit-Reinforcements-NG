@@ -170,6 +170,35 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             continue;
         }
 
+        // ── KESİN TÜR KONTROLÜ (IRK/KEYWORD) ──
+        // Şablonlardan veya ırklardan gelen factionlar her zaman VisitFactions'ta çıkmayabilir.
+        // Bu yüzden yaratık olup olmadığını en güvenilir yol olan Keyword'ler ile kontrol ediyoruz.
+        bool isCreature = baseObj->HasKeywordString("ActorTypeAnimal") || 
+                          baseObj->HasKeywordString("ActorTypeCreature") || 
+                          baseObj->HasKeywordString("ActorTypeMonster") ||
+                          baseObj->HasKeywordString("ActorTypeDragon");
+
+        bool isUndead = baseObj->HasKeywordString("ActorTypeUndead");
+        bool isDwarven = baseObj->HasKeywordString("ActorTypeDwarven");
+
+        if (faction == FactionType::Bandit || faction == FactionType::Warlock || faction == FactionType::Forsworn) {
+            if (isCreature || isDwarven || isUndead) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Humanoid, found Creature/Undead/Dwarven.");
+                continue;
+            }
+        } else if (faction == FactionType::Vampire) {
+            if (isCreature || isDwarven) continue;
+        } else if (faction == FactionType::Animal) {
+            if (!isCreature) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Animal, found non-Animal.");
+                continue;
+            }
+        } else if (faction == FactionType::Draugr) {
+            if (!isUndead) continue;
+        } else if (faction == FactionType::Dwemer) {
+            if (!isDwarven) continue;
+        }
+
         // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
         // Zaten isHostile == true olduğu için kesinlikle düşman olduklarını biliyoruz.
         if (!isCorrectFaction) {
