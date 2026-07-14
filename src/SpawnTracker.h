@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 enum class SpawnState {
+    Pending,
     Active,
     Cleared,
     Expired
@@ -24,6 +25,8 @@ public:
     }
 
     bool IsLocationReady(RE::FormID locFormID);
+    bool MarkLocationPending(RE::FormID locFormID);
+    void ClearPendingLocation(RE::FormID locFormID);
     void RegisterSpawn(RE::FormID locFormID, const std::vector<RE::ObjectRefHandle>& spawnedActors);
     void Update();
 

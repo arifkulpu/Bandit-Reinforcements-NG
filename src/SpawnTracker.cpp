@@ -30,8 +30,28 @@ bool SpawnTracker::IsLocationReady(RE::FormID locFormID) {
         return true;
     }
 
-    // State is Active
+    // State is Active or Pending
     return false;
+}
+
+bool SpawnTracker::MarkLocationPending(RE::FormID locFormID) {
+    if (!IsLocationReady(locFormID)) return false;
+
+    SpawnRecord record;
+    record.state = SpawnState::Pending;
+    record.spawnTimeDays = GetCurrentGameTimeDays();
+    m_spawns[locFormID] = record;
+    return true;
+}
+
+void SpawnTracker::ClearPendingLocation(RE::FormID locFormID) {
+    auto it = m_spawns.find(locFormID);
+    if (it != m_spawns.end() && it->second.state == SpawnState::Pending) {
+        m_spawns.erase(it);
+        if (Settings::EnableLogging) {
+            SKSE::log::info("SpawnTracker: Cleared pending state for location 0x{:08X}", locFormID);
+        }
+    }
 }
 
 void SpawnTracker::RegisterSpawn(RE::FormID locFormID, const std::vector<RE::ObjectRefHandle>& spawnedActors) {

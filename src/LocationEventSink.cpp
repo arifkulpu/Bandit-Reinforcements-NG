@@ -164,6 +164,46 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
         }
     }
 
+    // ── MEKAN İÇİ HÜCRE DEĞİŞİMİ: Başarısız spawnları tekrar dene ──
+    // Eğer oyuncu bir "Location" içine girmiş ancak ilk girilen hücrede
+    // (örn: dış kapı) uygun NPC bulunamadığı için spawn iptal edilmişse,
+    // oyuncu mekanın başka bir hücresine (örn: içeriye) geçtiğinde tekrar deneriz.
+    RE::BGSLocation* currentLoc = cell->GetLocation();
+    if (currentLoc) {
+        auto faction = BanditSpawner::GetFactionFromLocation(currentLoc);
+        if (faction != FactionType::Unknown) {
+            RE::FormID locID = currentLoc->GetFormID();
+            
+            if (SpawnTracker::GetSingleton()->MarkLocationPending(locID)) {
+                SKSE::log::info(">> CELL ATTACH SPAWN RETRY: Loc 0x{:08X} (faction={})", locID, static_cast<int>(faction));
+                
+                BanditSpawner::UpdateCache(cell, faction);
+
+                auto taskInterface = SKSE::GetTaskInterface();
+                if (taskInterface) {
+                    taskInterface->AddTask([locID, faction]() {
+                        auto p = RE::PlayerCharacter::GetSingleton();
+                        if (!p || !p->GetParentCell()) {
+                            SpawnTracker::GetSingleton()->ClearPendingLocation(locID);
+                            return;
+                        }
+                        
+                        auto spawnResult = BanditSpawner::SpawnReinforcements(p->GetParentCell(), faction);
+                        if (spawnResult.count > 0) {
+                            SpawnTracker::GetSingleton()->RegisterSpawn(locID, spawnResult.spawnedActors);
+                        } else {
+                            // Başarısız oldu (örn: template bulunamadı). Pending durumunu sil ki
+                            // bir sonraki hücrede (örneğin mağaraya girince) tekrar denesin.
+                            SpawnTracker::GetSingleton()->ClearPendingLocation(locID);
+                        }
+                    });
+                } else {
+                    SpawnTracker::GetSingleton()->ClearPendingLocation(locID);
+                }
+            }
+        }
+    }
+
     return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -238,29 +278,36 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
 
     RE::FormID trackID = newLoc->GetFormID();
 
-    if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
-        SKSE::log::info("  Location READY -> spawning reinforcements (faction={})", static_cast<int>(faction));
+    if (SpawnTracker::GetSingleton()->MarkLocationPending(trackID)) {
+        SKSE::log::info("  Location PENDING -> spawning reinforcements (faction={})", static_cast<int>(faction));
         
         auto taskInterface = SKSE::GetTaskInterface();
         if (taskInterface) {
             taskInterface->AddTask([trackID, faction]() {
                 auto p = RE::PlayerCharacter::GetSingleton();
-                if (!p) return;
+                if (!p) {
+                    SpawnTracker::GetSingleton()->ClearPendingLocation(trackID);
+                    return;
+                }
                 
                 auto currentCell = p->GetParentCell();
                 if (!currentCell) {
                     SKSE::log::warn("  Task: Player still has no parent cell. Aborting spawn.");
+                    SpawnTracker::GetSingleton()->ClearPendingLocation(trackID);
                     return;
                 }
 
                 auto spawnResult = BanditSpawner::SpawnReinforcements(currentCell, faction);
                 if (spawnResult.count > 0) {
                     SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
+                } else {
+                    // Başarısız oldu. Pending'i sil, böylece mekanın diğer hücrelerinde tekrar dener.
+                    SpawnTracker::GetSingleton()->ClearPendingLocation(trackID);
                 }
             });
         }
     } else {
-        SKSE::log::info("  Location in COOLDOWN or already spawned, skipping.");
+        SKSE::log::info("  Location in COOLDOWN, ACTIVE, or PENDING, skipping.");
     }
 
     return RE::BSEventNotifyControl::kContinue;
