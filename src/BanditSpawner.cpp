@@ -113,29 +113,45 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         
         // Faction kontrolü yapalım (Öncelik: vanilla faction ID'leri)
         bool isCorrectFaction = false;
+        bool isKnownOtherFaction = false;
+
         actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
             if (f) {
                 RE::FormID fID = f->GetFormID();
-                if (faction == FactionType::Bandit && fID == 0x0001BCC0) isCorrectFaction = true;
-                else if (faction == FactionType::Vampire && fID == 0x00027242) isCorrectFaction = true;
-                else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
-                else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
-                else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
-                else if (faction == FactionType::Animal && (
-                    fID == 0x0001CB62 || // AnimalFaction
-                    fID == 0x00028FDF || // PredatorFaction
-                    fID == 0x0002C6C8 || // TrollFaction
-                    fID == 0x00043596 || // SpiderFaction
-                    fID == 0x0004359A || // ChaurusFaction
-                    fID == 0x00043598 || // SprigganFaction
-                    fID == 0x00043594 || // BearFaction
-                    fID == 0x00043595 || // SabreCatFaction
-                    fID == 0x00043597    // MudcrabFaction
-                )) isCorrectFaction = true;
-                else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
-                else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
-                // PlayerFaction veya PlayerAllyFaction'a sahipse kesinlikle dost NPC - reddet
-                else if (fID == 0x0005C84E || fID == 0x00019809) { isCorrectFaction = false; return true; }
+                
+                // Dost faction kontrolü
+                if (fID == 0x0005C84E || fID == 0x00019809) { 
+                    isCorrectFaction = false; 
+                    isKnownOtherFaction = true; 
+                    return true; 
+                }
+
+                // Bilinen factionları gruplayalım
+                bool isBandit = (fID == 0x0001BCC0);
+                bool isVampire = (fID == 0x00027242);
+                bool isForsworn = (fID == 0x00043599);
+                bool isWarlock = (fID == 0x00030C66);
+                bool isDraugr = (fID == 0x0002430D);
+                bool isAnimal = (
+                    fID == 0x0001CB62 || fID == 0x00028FDF || fID == 0x0002C6C8 || 
+                    fID == 0x00043596 || fID == 0x0004359A || fID == 0x00043598 || 
+                    fID == 0x00043594 || fID == 0x00043595 || fID == 0x00043597
+                );
+                bool isFalmer = (fID == 0x0002446A);
+                bool isDwemer = (fID == 0x0001BCC1);
+
+                if (faction == FactionType::Bandit && isBandit) isCorrectFaction = true;
+                else if (faction == FactionType::Vampire && isVampire) isCorrectFaction = true;
+                else if (faction == FactionType::Forsworn && isForsworn) isCorrectFaction = true;
+                else if (faction == FactionType::Warlock && isWarlock) isCorrectFaction = true;
+                else if (faction == FactionType::Draugr && isDraugr) isCorrectFaction = true;
+                else if (faction == FactionType::Animal && isAnimal) isCorrectFaction = true;
+                else if (faction == FactionType::Falmer && isFalmer) isCorrectFaction = true;
+                else if (faction == FactionType::Dwemer && isDwemer) isCorrectFaction = true;
+                else if (isBandit || isVampire || isForsworn || isWarlock || isDraugr || isAnimal || isFalmer || isDwemer) {
+                    // Kendi aradığımız faction değil, ama BAŞKA bir bilinen düşman faction'ına sahip.
+                    isKnownOtherFaction = true;
+                }
             }
             return false;
         });
@@ -157,6 +173,15 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
         // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
         // Zaten isHostile == true olduğu için kesinlikle düşman olduklarını biliyoruz.
         if (!isCorrectFaction) {
+            // EĞER bu NPC başka BİLİNEN bir düşman grubuna aitse (örneğin Bandit arıyoruz ama bu bir Kurt), 
+            // fallback ile onu Bandit olarak kabul etmemeliyiz!
+            if (isKnownOtherFaction) {
+                if (Settings::EnableLogging) {
+                    SKSE::log::info("      -> SKIPPED: Belongs to a different known faction.");
+                }
+                continue;
+            }
+
             bool isEssential = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential);
             bool isProtected = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected);
             bool hasCombatStyle = (baseObj->combatStyle != nullptr);
