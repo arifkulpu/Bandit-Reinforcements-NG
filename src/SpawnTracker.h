@@ -29,6 +29,7 @@ public:
     void ClearPendingLocation(RE::FormID locFormID);
     void RegisterSpawn(RE::FormID locFormID, const std::vector<RE::ObjectRefHandle>& spawnedActors);
     void Update();
+    void CheckAndStopCombatByDistance(RE::PlayerCharacter* player);
 
 private:
     SpawnTracker() = default;

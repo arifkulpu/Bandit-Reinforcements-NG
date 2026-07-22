@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
@@ -8,6 +8,11 @@
 namespace Settings {
     // General
     inline bool EnableLogging = true;
+    inline float ExteriorSpawnTimer = 120.0f;
+    inline bool ContinuousExteriorSpawns = false;
+    inline int MaxRuntimeActorsPerCell = 30;
+    inline float CombatStopDistance = 5000.0f;  // Oyuncu bu mesafe uzaklasinca savas durur (oyun birimi ~70m)
+    inline int MinHostilesForUnnamedCamp = 2;   // Isimsiz dis mekanlarda spawn icin gereken min dusman
 
     // Spawning (Level-based max spawns)
     inline int MaxSpawnsLevel10_24 = 5;
@@ -61,8 +66,12 @@ namespace Settings {
         ini.SetUnicode();
 
         // Settings
-        ini.SetBoolValue("Settings", "bEnableLogging", true,
-            "; Loglama aktif mi (1: Evet, 0: Hayir) / Enable logging (1: Yes, 0: No)");
+        ini.SetBoolValue("Settings", "bEnableLogging", true, "; Loglama aktif mi (1: Evet, 0: Hayir) / Enable logging");
+        ini.SetDoubleValue("Settings", "fExteriorSpawnTimer", 120.0, "; Acik dunyada periyodik spawn araligi (saniye) / Exterior periodic spawn interval (seconds)");
+        ini.SetBoolValue("Settings", "bContinuousExteriorSpawns", false, "; Acik dunyada limitsiz surekli spawn olsun mu? (1: Evet, 0: Hayir) / Endless exterior spawns?");
+        ini.SetLongValue("Settings", "iMaxRuntimeActorsPerCell", 30, "; Hucre basina max runtime spawn sayisi / Max runtime spawned actors per cell");
+        ini.SetDoubleValue("Settings", "fCombatStopDistance", 5000.0, "; Oyuncu bu mesafe uzaklasinca spawn edilen dusmanlarin savasi durur (oyun birimi, ~70m) / Combat stop distance");
+        ini.SetLongValue("Settings", "iMinHostilesForUnnamedCamp", 2, "; Isimsiz acik dunya hucrelerinde klonlama icin gereken MINIMUM orjinal dusman sayisi / Min hostiles for wilderness spawns");
 
         // Spawning
         ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5,
@@ -136,6 +145,11 @@ namespace Settings {
         if (ini.LoadFile(INI_PATH) == SI_OK) {
             // General
             EnableLogging = ini.GetBoolValue("Settings", "bEnableLogging", true);
+            ExteriorSpawnTimer = static_cast<float>(ini.GetDoubleValue("Settings", "fExteriorSpawnTimer", 120.0));
+            ContinuousExteriorSpawns = ini.GetBoolValue("Settings", "bContinuousExteriorSpawns", false);
+            MaxRuntimeActorsPerCell = static_cast<int>(ini.GetLongValue("Settings", "iMaxRuntimeActorsPerCell", 30));
+            CombatStopDistance = static_cast<float>(ini.GetDoubleValue("Settings", "fCombatStopDistance", 5000.0));
+            MinHostilesForUnnamedCamp = static_cast<int>(ini.GetLongValue("Settings", "iMinHostilesForUnnamedCamp", 2));
 
             // Spawning
             MaxSpawnsLevel10_24 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5));
@@ -182,6 +196,15 @@ namespace Settings {
             FormID_DraugrBoss = ini.GetValue("FormIDs", "sDraugrBoss", "0x000130F6");
 
             SKSE::log::info("INI loaded successfully from {}", INI_PATH);
+            
+            // Re-save to ensure missing keys are added
+            ini.SetBoolValue("Settings", "bEnableLogging", EnableLogging, "; Loglama aktif mi (1: Evet, 0: Hayir) / Enable logging");
+            ini.SetDoubleValue("Settings", "fExteriorSpawnTimer", ExteriorSpawnTimer, "; Acik dunyada periyodik spawn araligi (saniye) / Exterior periodic spawn interval (seconds)");
+            ini.SetBoolValue("Settings", "bContinuousExteriorSpawns", ContinuousExteriorSpawns, "; Acik dunyada limitsiz surekli spawn olsun mu? (1: Evet, 0: Hayir) / Endless exterior spawns?");
+            ini.SetLongValue("Settings", "iMaxRuntimeActorsPerCell", MaxRuntimeActorsPerCell, "; Hucre basina max runtime spawn sayisi / Max runtime spawned actors per cell");
+            ini.SetDoubleValue("Settings", "fCombatStopDistance", CombatStopDistance, "; Oyuncu bu mesafe uzaklasinca spawn edilen dusmanlarin savasi durur (oyun birimi, ~70m) / Combat stop distance");
+            ini.SetLongValue("Settings", "iMinHostilesForUnnamedCamp", MinHostilesForUnnamedCamp, "; Isimsiz acik dunya hucrelerinde klonlama icin gereken MINIMUM orjinal dusman sayisi / Min hostiles for wilderness spawns");
+            ini.SaveFile(INI_PATH);
         }
     }
 }
@@ -204,3 +227,8 @@ namespace Logger {
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     }
 }
+
+
+
+
+

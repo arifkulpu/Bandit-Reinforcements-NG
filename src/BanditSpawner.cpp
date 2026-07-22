@@ -97,6 +97,11 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                             ref->GetFormID(), baseObj->GetFormID(), baseObj->GetName(), actor->IsDead());
         }
         
+        if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
+            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Unique actor");
+            continue;
+        }
+        
         // 0xFF ile baslayan formlar (ornegin 0xFF00113C) oyun icerisinde olusturulmus gecici kopyalardir (Runtime Temporary).
         // Bu formlardan NPC uretip (PlaceObjectAtMe) ardindan oyunu kaydedersek save dosyasi bozulur ve Save Load Crash yasanir!
         // Bu yuzden sadece eklentilerden gelen statik formlari (0x00 - 0xFE) kabul etmeliyiz.
@@ -170,33 +175,47 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             continue;
         }
 
-        // ── KESİN TÜR KONTROLÜ (IRK/KEYWORD) ──
-        // Şablonlardan veya ırklardan gelen factionlar her zaman VisitFactions'ta çıkmayabilir.
-        // Bu yüzden yaratık olup olmadığını en güvenilir yol olan Keyword'ler ile kontrol ediyoruz.
-        bool isCreature = baseObj->HasKeywordString("ActorTypeAnimal") || 
-                          baseObj->HasKeywordString("ActorTypeCreature") || 
-                          baseObj->HasKeywordString("ActorTypeMonster") ||
-                          baseObj->HasKeywordString("ActorTypeDragon");
+        bool isAnimalKw = baseObj->HasKeywordString("ActorTypeAnimal");
+        bool isCreatureKw = baseObj->HasKeywordString("ActorTypeCreature") || baseObj->HasKeywordString("ActorTypeMonster") || baseObj->HasKeywordString("ActorTypeDragon");
+        bool isUndeadKw = baseObj->HasKeywordString("ActorTypeUndead");
+        bool isDwarvenKw = baseObj->HasKeywordString("ActorTypeDwarven");
 
-        bool isUndead = baseObj->HasKeywordString("ActorTypeUndead");
-        bool isDwarven = baseObj->HasKeywordString("ActorTypeDwarven");
+        if (baseObj->race) {
+            if (!isAnimalKw) isAnimalKw = baseObj->race->HasKeywordString("ActorTypeAnimal");
+            if (!isCreatureKw) isCreatureKw = baseObj->race->HasKeywordString("ActorTypeCreature") || baseObj->race->HasKeywordString("ActorTypeMonster") || baseObj->race->HasKeywordString("ActorTypeDragon");
+            if (!isUndeadKw) isUndeadKw = baseObj->race->HasKeywordString("ActorTypeUndead");
+            if (!isDwarvenKw) isDwarvenKw = baseObj->race->HasKeywordString("ActorTypeDwarven");
+        }
 
         if (faction == FactionType::Bandit || faction == FactionType::Warlock || faction == FactionType::Forsworn) {
-            if (isCreature || isDwarven || isUndead) {
+            if (isAnimalKw || isCreatureKw || isDwarvenKw || isUndeadKw) {
                 if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Humanoid, found Creature/Undead/Dwarven.");
                 continue;
             }
         } else if (faction == FactionType::Vampire) {
-            if (isCreature || isDwarven) continue;
+            if (isAnimalKw || isCreatureKw || isDwarvenKw) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Vampire (Humanoid/Undead), found Animal/Creature/Dwarven.");
+                continue;
+            }
         } else if (faction == FactionType::Animal) {
-            if (!isCreature) {
-                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Animal, found non-Animal.");
+            if (!isAnimalKw && !isCreatureKw) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Animal/Creature, found non-Animal.");
+                continue;
+            }
+            if (isUndeadKw || isDwarvenKw) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Animal/Creature, found Undead/Dwarven.");
                 continue;
             }
         } else if (faction == FactionType::Draugr) {
-            if (!isUndead) continue;
+            if (isAnimalKw || isDwarvenKw) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Draugr, found Animal/Dwarven.");
+                continue;
+            }
         } else if (faction == FactionType::Dwemer) {
-            if (!isDwarven) continue;
+            if (isAnimalKw || isUndeadKw) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Expected Dwemer, found Animal/Undead.");
+                continue;
+            }
         }
 
         // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
@@ -418,6 +437,9 @@ static void ParseAndAddToCache(const char* csvStr, FactionType faction) {
 
         // TESNPC olduğunu doğrula
         if (!form->As<RE::TESNPC>()) { ++skipped; continue; }
+        auto npc = form->As<RE::TESNPC>();
+        if (!npc) { ++skipped; continue; }
+        if (npc->IsUnique()) { ++skipped; continue; }
 
         // Zaten cache'de var mı?
         auto it = std::find(cache.begin(), cache.end(), form);
@@ -803,3 +825,8 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
 
     return result;
 }
+
+
+
+
+

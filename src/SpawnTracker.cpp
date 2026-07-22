@@ -100,3 +100,32 @@ void SpawnTracker::Update() {
         }
     }
 }
+
+void SpawnTracker::CheckAndStopCombatByDistance(RE::PlayerCharacter* player) {
+    if (!player) return;
+    
+    int totalStopped = 0;
+    float maxDistSq = Settings::CombatStopDistance * Settings::CombatStopDistance;
+
+    for (auto& [locFormID, record] : m_spawns) {
+        if (record.state != SpawnState::Active) continue;
+
+        for (auto& handle : record.actors) {
+            auto ref = handle.get().get();
+            if (ref) {
+                auto actor = ref->As<RE::Actor>();
+                if (actor && !actor->IsDead() && actor->IsInCombat()) {
+                    auto distSq = player->GetPosition().GetSquaredDistance(actor->GetPosition());
+                    if (distSq > maxDistSq) {
+                        actor->StopCombat();
+                        totalStopped++;
+                    }
+                }
+            }
+        }
+    }
+
+    if (Settings::EnableLogging && totalStopped > 0) {
+        SKSE::log::info("SpawnTracker: Stopped combat for {} actors due to distance", totalStopped);
+    }
+}

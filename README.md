@@ -33,12 +33,24 @@ Gelen grupların arasında bir Lider (Boss) bulunması oyuncu seviyesine göre d
 - **Seviye 25–49:** 1 Boss **garanti** doğar + %30 ihtimalle 2. Boss da çıkar.
 - **Seviye 50+:** 2 Boss **garanti** doğar + %40 ihtimalle 3. Boss da çıkar.
 
-#### 🏹 Pusu Mekaniği (Ambushes) & İsimsiz Kamplar
-- **Zindan Çıkış Pususu:** Bir zindanı temizleyip dışarı çıktığınızda, kapıda sizi bekleyen bir intikam grubu doğabilir (150-300 birim yakında).
-- **Açık Dünya Pususu:** Düşman alanlarından ayrılıp vahşi doğaya çıktığınızda düşmanlar arkanızdan pusu kurmak üzere takibe başlayabilir.
-- **İsimsiz Vahşi Doğa Kampları (Yeni):** Haritada resmi bir adı veya etiketi olmayan, ancak etrafta **en az 1 adet** düşmanın bulunduğu yıkık dökük alanlar da mod tarafından otomatik tespit edilir. Buralara girdiğinizde ekstra asker çağırılır, buralardan çıkarken de pusu yeme ihtimaliniz vardır!
+### Özellikler (v2.0.0 Yeni Güncellemeleri ile)
 
-#### 📊 Seviye Ölçeklendirmesi
+#### 🐺 Hatalı "Kurt Spawn" (Yanlış Hayvan) Düzeltmesi
+Eskiden, mod bir kampa girdiğinizde düşmanları tararken Kurtları yanlışlıkla "Haydut" olarak sınıflandırabiliyordu. Artık geliştirilmiş "Irk ve Keyword Analizi" sayesinde sistem, canlıların tam olarak ne olduğunu çok daha zekice tespit ediyor. Kurtlar, Örümcekler ve Hayvanlar, asla insan düşmanların (Haydutlar vb.) yerine geçemez.
+
+#### 🎯 Unique (Özel İsimli) Karakterlerin Kopyalanması Engellendi
+Oyun içindeki görevlerle bağlantılı veya sadece 1 tane bulunması gereken "Özel İsimli (Unique)" karakterlerin klonlanması sorunu çözüldü. Sistem, artık bu karakterleri otomatik olarak atlayarak sadece jenerik düşmanları klonlar.
+
+#### ⚔️ Çoklu Fraksiyon Çatışması (Kendi Arasında Savaşma) Düzeltildi
+Bir kampta hem Haydutlar hem de Kurtlar bulunuyorsa, oyun motorunun kafa karışıklığı yaşayıp grupları birbirine saldırtması problemi çözüldü. Artık her fraksiyon kendi kimliğiyle, kendi dostlarına sadık olarak kusursuzca doğar.
+
+#### 🏃 Dış Mekan / Kamp Kaçış Sistemi Geliştirildi
+Bir bölgeden yeterince uzaklaştığınızda (Combat Stop Distance), yaratılan ekstra askerler savaşmayı bırakır ve kampı devriye gezmek üzere geri dönerler. Artık tüm harita boyunca sizi kovalayıp performans sorunu yaratmazlar.
+
+#### 🏕️ İsimsiz Vahşi Doğa Kampları
+Haritada resmi bir adı veya etiketi olmayan, ancak etrafta **en az 1 adet** düşmanın bulunduğu yıkık dökük alanlar da mod tarafından otomatik tespit edilir. Buralara girdiğinizde ekstra asker çağırılır, buralardan çıkarken de pusu yeme ihtimaliniz vardır!
+
+#### 🔄 Dinamik Takviyeler Ölçeklendirmesi
 Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir (Seviye 10 altındayken fazladan düşman/pusu asla çıkmaz):
 - Seviye 1–9: Ekstra düşman çıkmaz (Sıfır takviye).
 - Seviye 10–24: 1 ile 5 arası takviye.
@@ -110,12 +122,24 @@ The chance and number of **Bosses** (Bandit Chief, Vampire Lord, etc.) in a grou
 - **Levels 25–49:** 1 Boss **guaranteed** + 30% chance for a 2nd Boss.
 - **Levels 50+:** 2 Bosses **guaranteed** + 40% chance for a 3rd Boss.
 
-#### 🏹 Ambushes & Unnamed Camps
-- **Dungeon Exit Ambushes:** After clearing a dungeon and exiting, a revenge group may spawn extremely close to the entrance (150-300 units).
-- **Open World Ambushes:** Escaping from enemy locations triggers pursuit from hostile forces.
-- **Unnamed Wilderness Camps (New):** Even if an area has no official location tag, if the mod detects **at least 1 hostile enemy** organically waiting in the wild, it dynamically treats it as an "Unnamed Camp", triggering both reinforcements and ambushes upon leaving!
+### Features (with v2.0.0 New Updates)
 
-#### 📊 Level Scaling
+#### 🐺 "Wolves Spawning as Bandits" Fix
+Previously, the mod could incorrectly identify Wolves as "Bandits" when scanning a camp. With the newly improved "Race and Keyword Analysis", the system now intelligently determines the exact type of creature. Wolves, Spiders, and other Animals will never be mistaken for humanoid enemies (Bandits, etc.) again.
+
+#### 🎯 Unique Character Cloning Prevented
+The issue of cloning "Unique" named characters (which are tied to quests or meant to exist only once) has been fixed. The system now automatically skips these characters and exclusively clones generic enemies.
+
+#### ⚔️ Multi-Faction Conflict (Infighting) Resolved
+Fixed the game engine confusion that occurred when both Bandits and Wolves existed in the same camp, causing them to fight each other. Now, each faction spawns with its proper identity, remaining loyal to its allies.
+
+#### 🏃 Outdoor / Camp Escape System Improved
+When you move far enough away from an area (Combat Stop Distance), the spawned extra soldiers will stop fighting and return to patrol the camp. They will no longer chase you across the entire map, saving performance.
+
+#### 🏕️ Unnamed Wilderness Camps
+Even if an area has no official location tag, if the mod detects **at least 1 hostile enemy** organically waiting in the wild, it dynamically treats it as an "Unnamed Camp", triggering both reinforcements and ambushes upon leaving!
+
+#### 🔄 Dynamic Reinforcements
 Maximum extra enemies strictly scale with player level (no spawns under level 10):
 - Levels 1–9: No extra spawns (Zero reinforcements).
 - Levels 10–24: 1 to 5 extra enemies.
