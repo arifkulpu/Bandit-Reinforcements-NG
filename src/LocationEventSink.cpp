@@ -69,7 +69,7 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
         if (prevCell) {
             RE::BGSLocation* prevLoc = prevCell->GetLocation();
             if (prevLoc) {
-                auto faction = BanditSpawner::GetFactionFromLocation(prevLoc);
+                auto faction = BanditSpawner::DetermineFactionForCell(prevCell, prevLoc);
                 if (faction != FactionType::Unknown) {
                     BanditSpawner::UpdateCache(prevCell, faction);
 
@@ -163,29 +163,53 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
     }
 
     // ── TAKVİYE: Düşman alanına giriyoruz ──
-    if (!newLoc) {
+    auto cell = player->GetParentCell();
+    if (!cell) {
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    SKSE::log::info("=== ActorLocationChange: NewLoc=0x{:08X} ===", newLoc->GetFormID());
+    SKSE::log::info("=== ActorLocationChange: NewLoc=0x{:08X} ===", newLoc ? newLoc->GetFormID() : 0);
     
-    // We entered a named location, so we are no longer in an unnamed camp
-    m_currentUnnamedFaction = FactionType::Unknown;
+    RE::BGSLocation* loc = cell->GetLocation();
+    if (newLoc) {
+        // We entered a named location, so we are no longer in an unnamed camp
+        m_currentUnnamedFaction = FactionType::Unknown;
+    }
 
-    auto faction = BanditSpawner::GetFactionFromLocation(newLoc);
+    auto faction = BanditSpawner::DetermineFactionForCell(cell, loc);
     if (faction == FactionType::Unknown) {
         SKSE::log::info("  Location is not a hostile area, skipping reinforcements.");
         return RE::BSEventNotifyControl::kContinue;
+    }
+
+    // İsimsiz açık dünya alanı tespiti (loc yoksa ama düşman faction bulunduysa)
+    if (!loc && !cell->IsInteriorCell()) {
+        m_currentUnnamedFaction = faction;
+        SKSE::log::info("  Entered UNNAMED hostile wilderness area (faction={})", static_cast<int>(faction));
     }
 
     if (player && player->GetParentCell()) {
         BanditSpawner::UpdateCache(player->GetParentCell(), faction);
     }
 
-    RE::FormID trackID = newLoc->GetFormID();
+    RE::FormID trackID = BanditSpawner::GetTrackingID(cell, newLoc ? newLoc : loc);
+    if (trackID == 0) {
+        SKSE::log::warn("  ActorLocationChange: trackID is 0, skipping.");
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    // Cooldown haritası periyodik temizliği (5 dakikadan eski kayıtları sil)
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = m_lastAmbushTime.begin(); it != m_lastAmbushTime.end(); ) {
+        if (std::chrono::duration<float>(now - it->second).count() > 300.0f) {
+            it = m_lastAmbushTime.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     if (SpawnTracker::GetSingleton()->MarkLocationPending(trackID)) {
-        SKSE::log::info("  Location PENDING -> spawning reinforcements (faction={})", static_cast<int>(faction));
+        SKSE::log::info("  Location PENDING (trackID=0x{:08X}) -> spawning reinforcements (faction={})", trackID, static_cast<int>(faction));
         
         auto taskInterface = SKSE::GetTaskInterface();
         if (taskInterface) {
@@ -213,7 +237,7 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
             });
         }
     } else {
-        SKSE::log::info("  Location in COOLDOWN, ACTIVE, or PENDING, skipping.");
+        SKSE::log::info("  Location 0x{:08X} in COOLDOWN, ACTIVE, or PENDING, skipping.", trackID);
     }
 
     return RE::BSEventNotifyControl::kContinue;

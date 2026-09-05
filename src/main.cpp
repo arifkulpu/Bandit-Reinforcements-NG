@@ -1,7 +1,9 @@
-﻿#include "Settings.h"
+#include "Settings.h"
 #include <SKSE/SKSE.h>
+#include <random>
 
 #include "LocationEventSink.h"
+#include "UI.h"
 
 extern "C" void __std_regex_transform_primary_char() {}
 
@@ -12,14 +14,16 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
         // Tüm ESM/ESP yüklendikten sonra:
         // 1. Leveled list debug dump
         BanditSpawner::DumpLeveledLists();
-        // 2. INI'den önceki oturumlarda keşfedilen NPC'leri cache'e yükle.
-        //    Böylece ilk ziyaretten önce bile cache hazır olur.
+        // 2. INI'den önceki oturumlarda keşfedilen normal NPC'leri cache'e yükle.
         BanditSpawner::LoadCachedFormIDs();
+        // 3. INI'den önceki oturumlarda keşfedilen ELITE (boss) NPC'leri boss cache'e yükle.
+        BanditSpawner::LoadCachedBossFormIDs();
     }
     else if (message->type == SKSE::MessagingInterface::kSaveGame) {
         // Oyuncu kaydettiğinde: yeni keşfedilen NPC'leri INI'ye yaz (merge).
-        // Bu işlem sadece kayıt sırasında çalışır, gameplay'i etkilemez.
         BanditSpawner::SaveCachedFormIDs();
+        // Yeni keşfedilen ELITE NPC'leri [CachedBossNPCs] section'ına yaz.
+        BanditSpawner::SaveCachedBossFormIDs();
     }
 }
 
@@ -33,13 +37,19 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
 void InitPeriodicSpawner() {
     std::thread([]() {
         RE::FormID lastCellID = 0;
+        RE::FormID lastLocationID = 0;
         int exteriorTimer = 0;
+        int interiorTimer = 0;
+        int backupWavesTriggered = 0;
+        int currentBackupTarget = 300;
+        
+        std::mt19937 rng(std::random_device{}());
         
         while (true) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             auto task = SKSE::GetTaskInterface();
             if (task) {
-                task->AddTask([&lastCellID, &exteriorTimer]() {
+                task->AddTask([&lastCellID, &lastLocationID, &exteriorTimer, &interiorTimer, &backupWavesTriggered, &currentBackupTarget, &rng]() {
                     auto player = RE::PlayerCharacter::GetSingleton();
                     if (!player) return;
                     auto cell = player->GetParentCell();
@@ -55,6 +65,30 @@ void InitPeriodicSpawner() {
                     if (currentCellID != lastCellID) {
                         lastCellID = currentCellID;
                         exteriorTimer = 0; // Zamanlayıcıyı sıfırla
+                        interiorTimer = 0;
+
+                        RE::BGSLocation* loc = cell->GetLocation();
+                        RE::FormID currentLocID = loc ? loc->GetFormID() : currentCellID;
+
+                        // Yeni bir zindana/lokasyona girildiyse Destek Kuvvet şansı (%) rulo yap
+                        if (isInterior && currentLocID != lastLocationID) {
+                            lastLocationID = currentLocID;
+                            backupWavesTriggered = 0;
+
+                            std::uniform_int_distribution<int> chanceDist(1, 100);
+                            int roll = chanceDist(rng);
+                            if (roll > Settings::BackupChance) {
+                                backupWavesTriggered = Settings::BackupMaxWaves; // Bu zindanda destek hakkını kapat
+                                SKSE::log::info(">> [PeriodicTask] Backup forces SKIPPED for dungeon 0x{:08X} (rolled {}% > threshold {}%)",
+                                               currentLocID, roll, Settings::BackupChance);
+                            } else {
+                                SKSE::log::info(">> [PeriodicTask] Backup forces ENABLED for dungeon 0x{:08X} (rolled {}% <= threshold {}%)",
+                                               currentLocID, roll, Settings::BackupChance);
+                            }
+                        }
+                        
+                        std::uniform_int_distribution<int> dist(Settings::BackupTimerMin, Settings::BackupTimerMax);
+                        currentBackupTarget = dist(rng);
                         
                         // İsimsiz kamp pusu kontrolü
                         auto sink = LocationEventSink::GetSingleton();
@@ -64,71 +98,56 @@ void InitPeriodicSpawner() {
                             SKSE::log::info(">> UNNAMED CAMP LEAVE DETECTED! (faction={})", static_cast<int>(ambushFaction));
                             BanditSpawner::SpawnAmbush(ambushFaction, true);
                         }
-                        
-                        // İÇ MEKAN ve İSİMSİZ DIŞ MEKAN KAMPLARI İÇİN SPAWN
-                        if (SpawnTracker::GetSingleton()->IsLocationReady(currentCellID)) {
-                            FactionType cellFaction = FactionType::Unknown;
-                            RE::BGSLocation* loc = cell->GetLocation();
-                            if (loc) {
-                                cellFaction = BanditSpawner::GetFactionFromLocation(loc);
-                            }
+
+                        // SADECE İÇ MEKANLAR İÇİN HÜCRE BAZLI SPAWN VE KOPYALAMA
+                        if (isInterior) {
+                            FactionType cellFaction = BanditSpawner::DetermineFactionForCell(cell, loc);
                             
-                            // Eğer dış mekansak ve mekanın kendi factionı varsa (isimlendirilmiş lokasyon), 
-                            // ActorLocationChangeEvent zaten hallediyor. Burada çift spawn olmasın diye atlıyoruz.
-                            if (!isInterior && cellFaction != FactionType::Unknown) {
-                                // atla
-                            } else {
-                                // İç mekansak VEYA isimsiz bir dış kamp ise NPC'leri tarayarak faction bulalım
-                                if (cellFaction == FactionType::Unknown) {
-                                    std::unordered_map<FactionType, int> factionCounts;
-                                    for (auto& ref : cell->GetRuntimeData().references) {
-                                        if (!ref) continue;
-                                        auto actor = ref->As<RE::Actor>();
-                                        if (!actor || actor == player || actor->IsDead() || !actor->IsHostileToActor(player)) continue;
-                                        
-                                        FactionType actFaction = FactionType::Unknown;
-                                        actor->VisitFactions([&](RE::TESFaction* f, int8_t) {
-                                            if (!f) return false;
-                                            RE::FormID fID = f->GetFormID();
-                                            if (fID == 0x0001BCC0 && Settings::EnableBandits)   { actFaction = FactionType::Bandit;   return true; }
-                                            if (fID == 0x00027242 && Settings::EnableVampires)  { actFaction = FactionType::Vampire;  return true; }
-                                            if (fID == 0x00030C66 && Settings::EnableWarlocks)  { actFaction = FactionType::Warlock;  return true; }
-                                            if (fID == 0x00043599 && Settings::EnableForsworn)  { actFaction = FactionType::Forsworn; return true; }
-                                            if (fID == 0x0002430D && Settings::EnableDraugr)    { actFaction = FactionType::Draugr;   return true; }
-                                            if ((fID == 0x0001CB62 || fID == 0x00028FDF || fID == 0x0002C6C8 || fID == 0x00043596 || fID == 0x0004359A || fID == 0x00043598 || fID == 0x00043594 || fID == 0x00043595 || fID == 0x00043597) && Settings::EnableAnimals) { actFaction = FactionType::Animal; return true; }
-                                            if (fID == 0x0002446A && Settings::EnableFalmer)    { actFaction = FactionType::Falmer;   return true; }
-                                            if (fID == 0x0001BCC1 && Settings::EnableDwemer)    { actFaction = FactionType::Dwemer;   return true; }
-                                            return false;
-                                        });
-                                        if (actFaction != FactionType::Unknown) {
-                                            factionCounts[actFaction]++;
-                                        }
-                                    }
-                                    
-                                    // Yeterli düşman sayısına ulaşan bir faction bul
-                                    int requiredCount = isInterior ? 1 : Settings::MinHostilesForUnnamedCamp;
-                                    for (auto& [faction, count] : factionCounts) {
-                                        if (count >= requiredCount) {
-                                            cellFaction = faction;
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                if (cellFaction != FactionType::Unknown) {
-                                    SKSE::log::info(">> [PeriodicTask] CELL SPAWN (Interior or Unnamed Camp): Cell=0x{:08X} (faction={})", currentCellID, static_cast<int>(cellFaction));
+                            if (cellFaction != FactionType::Unknown) {
+                                // Mağarada yeni bir alt alana/hücreye her girdiğimizde o hücredeki NPC'leri tara ve kopyala!
+                                BanditSpawner::UpdateCache(cell, cellFaction);
+
+                                RE::FormID trackID = BanditSpawner::GetTrackingID(cell, loc);
+                                if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
+                                    SKSE::log::info(">> [PeriodicTask] CELL SPAWN (Interior): TrackID=0x{:08X} Cell=0x{:08X} (faction={})", trackID, currentCellID, static_cast<int>(cellFaction));
                                     auto spawnResult = BanditSpawner::SpawnReinforcements(cell, cellFaction);
                                     if (spawnResult.count > 0) {
-                                        SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, spawnResult.spawnedActors);
-                                        
-                                        if (!isInterior) {
-                                            LocationEventSink::GetSingleton()->SetCurrentUnnamedFaction(cellFaction);
-                                        }
+                                        SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
                                     }
                                 }
                             }
                         }
                     }
+
+                    // DESTEK KUVVETLER (BACKUP FORCES) SİSTEMİ
+                    if (isInterior && backupWavesTriggered < Settings::BackupMaxWaves && Settings::EnableBackupForces) {
+                        interiorTimer++;
+                        if (interiorTimer >= currentBackupTarget) {
+                            backupWavesTriggered++; 
+                            interiorTimer = 0; // Sonraki dalga için sıfırla
+                            
+                            std::uniform_int_distribution<int> dist(Settings::BackupTimerMin, Settings::BackupTimerMax);
+                            currentBackupTarget = dist(rng); // Yeni dalga için rastgele hedef
+                            
+                            RE::BGSLocation* loc = cell->GetLocation();
+                            FactionType backupFaction = BanditSpawner::DetermineFactionForCell(cell, loc);
+                            
+                            if (backupFaction != FactionType::Unknown) {
+                                SKSE::log::info(">> [PeriodicTask] DESTEK KUVVETLER GELDİ! Cell=0x{:08X}, Wave {}/{}", currentCellID, backupWavesTriggered, Settings::BackupMaxWaves);
+                                
+                                if (Settings::ShowBackupMessage) {
+                                    RE::DebugNotification("Backup forces have arrived!");
+                                }
+                                
+                                // Zindan içi pusu mekaniğini kullanarak arkadan spawn at
+                                auto spawnResult = BanditSpawner::SpawnAmbush(backupFaction, false);
+                                if (spawnResult.count > 0) {
+                                    SpawnTracker::GetSingleton()->RegisterSpawn(currentCellID, spawnResult.spawnedActors);
+                                }
+                            }
+                        }
+                    }
+
                     
                     // DIŞ MEKAN: Limitsiz sürekli spawn modu (eğer açıksa)
                     if (Settings::ContinuousExteriorSpawns && !isInterior) {
@@ -138,8 +157,12 @@ void InitPeriodicSpawner() {
                         
                         if (exteriorTimer >= maxTime) {
                             exteriorTimer = 0;
-                            // Açık dünyada tarama yapıp klonla
-                            BanditSpawner::SpawnReinforcements(cell, FactionType::Unknown);
+                            // Açık dünyada tarama yapıp dominant faction'ı bul ve klonla
+                            RE::BGSLocation* loc = cell->GetLocation();
+                            FactionType extFaction = BanditSpawner::DetermineFactionForCell(cell, loc);
+                            if (extFaction != FactionType::Unknown) {
+                                BanditSpawner::SpawnReinforcements(cell, extFaction);
+                            }
                         }
                     }
                 });
@@ -163,7 +186,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     SKSE::Init(skse);
 
     Logger::Setup();
-    SKSE::log::info("BanditReinforcementsNG loaded - version 2.0.0");
+    SKSE::log::info("BanditReinforcementsNG loaded - version 2.1.0");
 
     Settings::Load();
     SKSE::log::info("Settings loaded from INI.");
@@ -188,6 +211,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     }
 
     InitListener();
+    UI::Register();
 
     return true;
 }

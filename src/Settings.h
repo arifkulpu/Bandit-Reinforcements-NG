@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
@@ -14,11 +14,22 @@ namespace Settings {
     inline float CombatStopDistance = 5000.0f;  // Oyuncu bu mesafe uzaklasinca savas durur (oyun birimi ~70m)
     inline int MinHostilesForUnnamedCamp = 2;   // Isimsiz dis mekanlarda spawn icin gereken min dusman
 
+    // Backup Forces (Zindan Destek Kuvvetleri)
+    inline bool EnableBackupForces = true;
+    inline int BackupChance = 30;     // % cinsinden destek gelme sansi (0-100)
+    inline int BackupTimerMin = 60;   // Saniye cinsinden min
+    inline int BackupTimerMax = 600;  // Saniye cinsinden max
+    inline int BackupMaxWaves = 1;    // Maksimum dalga sayısı
+    inline bool ShowBackupMessage = true;
+
     // Spawning (Level-based max spawns)
     inline int MaxSpawnsLevel10_24 = 5;
     inline int MaxSpawnsLevel25_49 = 10;
     inline int MaxSpawnsLevel50Plus = 15;
     inline float PatrolSpawnDistance = 2000.0f;
+    // Klon yogunlugu (0-100%): Maksimum spawn sayısını bu oranla çarpar.
+    // %100 = her zaman maksimum klon, %50 = maksimumun yaklasik yarisi, %0 = hic spawn yok.
+    inline int SpawnDensity = 75;
 
     // Boss (Level-based chance)
     inline int BossChanceLevel10_24 = 20;
@@ -73,6 +84,14 @@ namespace Settings {
         ini.SetDoubleValue("Settings", "fCombatStopDistance", 5000.0, "; Oyuncu bu mesafe uzaklasinca spawn edilen dusmanlarin savasi durur (oyun birimi, ~70m) / Combat stop distance");
         ini.SetLongValue("Settings", "iMinHostilesForUnnamedCamp", 2, "; Isimsiz acik dunya hucrelerinde klonlama icin gereken MINIMUM orjinal dusman sayisi / Min hostiles for wilderness spawns");
 
+        // Backup Forces
+        ini.SetBoolValue("BackupForces", "bEnableBackupForces", true, "; Zindanlarda destek kuvvet sistemi aktif mi? / Enable interior backup forces?");
+        ini.SetLongValue("BackupForces", "iBackupChance", 30, "; Zindanlarda destek kuvvet gelme sansi (%) (0-100) / Backup forces chance percentage");
+        ini.SetLongValue("BackupForces", "iBackupTimerMin", 60, "; Destek gelmesi icin gecmesi gereken MINIMUM sure (saniye) / Min backup timer in seconds");
+        ini.SetLongValue("BackupForces", "iBackupTimerMax", 600, "; Destek gelmesi icin gecmesi gereken MAKSIMUM sure (saniye) / Max backup timer in seconds");
+        ini.SetLongValue("BackupForces", "iBackupMaxWaves", 1, "; Bir zindanda en fazla kac defa destek gelebilir / Max backup waves per dungeon");
+        ini.SetBoolValue("BackupForces", "bShowBackupMessage", true, "; Ekrana uyari yazisi gelsin mi? / Show backup notification message?");
+
         // Spawning
         ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5,
             "; Level 10-24 arasinda maks ek dusman (Lvl 1-9 hic dogma yapmaz) / Max spawns for Lvl 10-24 (Lvl 1-9 spawns nothing)");
@@ -80,6 +99,8 @@ namespace Settings {
         ini.SetLongValue("Spawning", "iMaxSpawnsLevel50Plus", 15);
         ini.SetDoubleValue("Spawning", "fPatrolSpawnDistance", 2000.0,
             "; Dusmanlar oyuncudan ne kadar uzakta dogacak (oyun birimi) / Patrol spawn distance (game units)");
+        ini.SetLongValue("Spawning", "iSpawnDensity", 75,
+            "; Klon yogunlugu % (0-100): Maks spawn sayisini bu oran ile olcer. 100=her zaman maksimum, 0=hic spawn yok / Spawn density percentage");
 
         // Boss
         ini.SetLongValue("Boss", "iBossChanceLevel10_24", 20,
@@ -151,11 +172,22 @@ namespace Settings {
             CombatStopDistance = static_cast<float>(ini.GetDoubleValue("Settings", "fCombatStopDistance", 5000.0));
             MinHostilesForUnnamedCamp = static_cast<int>(ini.GetLongValue("Settings", "iMinHostilesForUnnamedCamp", 2));
 
+            // Backup Forces
+            EnableBackupForces = ini.GetBoolValue("BackupForces", "bEnableBackupForces", true);
+            BackupChance = static_cast<int>(ini.GetLongValue("BackupForces", "iBackupChance", 30));
+            BackupTimerMin = static_cast<int>(ini.GetLongValue("BackupForces", "iBackupTimerMin", 60));
+            BackupTimerMax = static_cast<int>(ini.GetLongValue("BackupForces", "iBackupTimerMax", 600));
+            BackupMaxWaves = static_cast<int>(ini.GetLongValue("BackupForces", "iBackupMaxWaves", 1));
+            ShowBackupMessage = ini.GetBoolValue("BackupForces", "bShowBackupMessage", true);
+
             // Spawning
             MaxSpawnsLevel10_24 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel10_24", 5));
             MaxSpawnsLevel25_49 = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel25_49", 10));
             MaxSpawnsLevel50Plus = static_cast<int>(ini.GetLongValue("Spawning", "iMaxSpawnsLevel50Plus", 15));
             PatrolSpawnDistance = static_cast<float>(ini.GetDoubleValue("Spawning", "fPatrolSpawnDistance", 2000.0));
+            SpawnDensity = static_cast<int>(ini.GetLongValue("Spawning", "iSpawnDensity", 75));
+            if (SpawnDensity < 0)   SpawnDensity = 0;
+            if (SpawnDensity > 100) SpawnDensity = 100;
 
             // Boss
             BossChanceLevel10_24 = static_cast<int>(ini.GetLongValue("Boss", "iBossChanceLevel10_24", 20));
@@ -204,8 +236,66 @@ namespace Settings {
             ini.SetLongValue("Settings", "iMaxRuntimeActorsPerCell", MaxRuntimeActorsPerCell, "; Hucre basina max runtime spawn sayisi / Max runtime spawned actors per cell");
             ini.SetDoubleValue("Settings", "fCombatStopDistance", CombatStopDistance, "; Oyuncu bu mesafe uzaklasinca spawn edilen dusmanlarin savasi durur (oyun birimi, ~70m) / Combat stop distance");
             ini.SetLongValue("Settings", "iMinHostilesForUnnamedCamp", MinHostilesForUnnamedCamp, "; Isimsiz acik dunya hucrelerinde klonlama icin gereken MINIMUM orjinal dusman sayisi / Min hostiles for wilderness spawns");
+
+            ini.SetBoolValue("BackupForces", "bEnableBackupForces", EnableBackupForces, "; Zindanlarda destek kuvvet sistemi aktif mi? / Enable interior backup forces?");
+            ini.SetLongValue("BackupForces", "iBackupTimerMin", BackupTimerMin, "; Destek gelmesi icin gecmesi gereken MINIMUM sure (saniye) / Min backup timer in seconds");
+            ini.SetLongValue("BackupForces", "iBackupTimerMax", BackupTimerMax, "; Destek gelmesi icin gecmesi gereken MAKSIMUM sure (saniye) / Max backup timer in seconds");
+            ini.SetLongValue("BackupForces", "iBackupMaxWaves", BackupMaxWaves, "; Bir zindanda en fazla kac defa destek gelebilir / Max backup waves per dungeon");
+            ini.SetBoolValue("BackupForces", "bShowBackupMessage", ShowBackupMessage, "; Ekrana uyari yazisi gelsin mi? / Show backup notification message?");
+
             ini.SaveFile(INI_PATH);
         }
+    }
+
+    // Oyun ici menudan cagrilir - tum mevcut degerleri INI'ye kaydeder
+    inline void Save() {
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        ini.LoadFile(INI_PATH); // Mevcut dosyayi yukle (FormIDs gibi alanlar kaybolmasin)
+
+        ini.SetBoolValue("Settings", "bEnableLogging", EnableLogging);
+        ini.SetDoubleValue("Settings", "fExteriorSpawnTimer", ExteriorSpawnTimer);
+        ini.SetBoolValue("Settings", "bContinuousExteriorSpawns", ContinuousExteriorSpawns);
+        ini.SetLongValue("Settings", "iMaxRuntimeActorsPerCell", MaxRuntimeActorsPerCell);
+        ini.SetDoubleValue("Settings", "fCombatStopDistance", CombatStopDistance);
+        ini.SetLongValue("Settings", "iMinHostilesForUnnamedCamp", MinHostilesForUnnamedCamp);
+
+        ini.SetBoolValue("BackupForces", "bEnableBackupForces", EnableBackupForces);
+        ini.SetLongValue("BackupForces", "iBackupChance", BackupChance);
+        ini.SetLongValue("BackupForces", "iBackupTimerMin", BackupTimerMin);
+        ini.SetLongValue("BackupForces", "iBackupTimerMax", BackupTimerMax);
+        ini.SetLongValue("BackupForces", "iBackupMaxWaves", BackupMaxWaves);
+        ini.SetBoolValue("BackupForces", "bShowBackupMessage", ShowBackupMessage);
+
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel10_24", MaxSpawnsLevel10_24);
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel25_49", MaxSpawnsLevel25_49);
+        ini.SetLongValue("Spawning", "iMaxSpawnsLevel50Plus", MaxSpawnsLevel50Plus);
+        ini.SetDoubleValue("Spawning", "fPatrolSpawnDistance", PatrolSpawnDistance);
+        ini.SetLongValue("Spawning", "iSpawnDensity", SpawnDensity);
+
+        ini.SetLongValue("Boss", "iBossChanceLevel10_24", BossChanceLevel10_24);
+        ini.SetLongValue("Boss", "iBossChanceLevel25_49", BossChanceLevel25_49);
+        ini.SetLongValue("Boss", "iBossChanceLevel50Plus", BossChanceLevel50Plus);
+
+        ini.SetLongValue("Ambush", "iAmbushChance", AmbushChance);
+        ini.SetLongValue("Ambush", "iAmbushMinCount", AmbushMinCount);
+        ini.SetLongValue("Ambush", "iAmbushMaxCount", AmbushMaxCount);
+        ini.SetDoubleValue("Ambush", "fAmbushSpawnDistance", AmbushSpawnDistance);
+        ini.SetDoubleValue("Ambush", "fAmbushCampSpawnDistance", AmbushCampSpawnDistance);
+
+        ini.SetDoubleValue("Cooldown", "fClearedCooldownDays", ClearedCooldownDays);
+        ini.SetDoubleValue("Cooldown", "fVisitedCooldownDays", VisitedCooldownDays);
+
+        ini.SetBoolValue("Factions", "bEnableBandits", EnableBandits);
+        ini.SetBoolValue("Factions", "bEnableVampires", EnableVampires);
+        ini.SetBoolValue("Factions", "bEnableWarlocks", EnableWarlocks);
+        ini.SetBoolValue("Factions", "bEnableForsworn", EnableForsworn);
+        ini.SetBoolValue("Factions", "bEnableDraugr", EnableDraugr);
+        ini.SetBoolValue("Factions", "bEnableAnimals", EnableAnimals);
+        ini.SetBoolValue("Factions", "bEnableFalmer", EnableFalmer);
+        ini.SetBoolValue("Factions", "bEnableDwemer", EnableDwemer);
+
+        ini.SaveFile(INI_PATH);
     }
 }
 
@@ -227,6 +317,7 @@ namespace Logger {
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     }
 }
+
 
 
 

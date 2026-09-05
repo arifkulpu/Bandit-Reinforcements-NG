@@ -45,8 +45,8 @@ private:
     RE::FormID m_lastDungeonAmbushCellID = 0;
     std::chrono::steady_clock::time_point m_lastDungeonAmbushTime;
 
-    // Minimum sure (gercek zaman, saniye) iki pusu arasinda
-    static constexpr float kAmbushCooldownSec = 30.0f;
+    // Minimum sure (gercek zaman, saniye) iki pusu arasinda (3 dakika = 180 saniye)
+    static constexpr float kAmbushCooldownSec = 180.0f;
 };
 
 

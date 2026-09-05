@@ -37,12 +37,103 @@ void BanditSpawner::DumpLeveledLists() {
             editorID.find("Vampire") != std::string::npos ||
             editorID.find("Warlock") != std::string::npos ||
             editorID.find("Forsworn") != std::string::npos ||
-            editorID.find("Draugr") != std::string::npos) 
+            editorID.find("Draugr") != std::string::npos ||
+            editorID.find("Skeleton") != std::string::npos) 
         {
             SKSE::log::info("  Found LvlList: '{}' -> FormID: 0x{:08X}", editorID, form->GetFormID());
         }
     }
     SKSE::log::info("=== DUMP FINISHED ===");
+}
+
+// ── Standardized tracking ID helper ──────────────────────────────
+RE::FormID BanditSpawner::GetTrackingID(RE::TESObjectCELL* cell, RE::BGSLocation* loc) {
+    if (loc && loc->GetFormID() != 0) {
+        return loc->GetFormID();
+    }
+    if (cell) {
+        return cell->GetFormID();
+    }
+    return 0;
+}
+
+// ── Common Faction Classification Logic ──────────────────────────
+FactionType BanditSpawner::DetectActorFaction(RE::Actor* actor) {
+    if (!actor) return FactionType::Unknown;
+
+    FactionType detected = FactionType::Unknown;
+
+    actor->VisitFactions([&](RE::TESFaction* f, int8_t) {
+        if (f) {
+            RE::FormID fID = f->GetFormID();
+            // Friendly faction check
+            if (fID == 0x0005C84E || fID == 0x00019809) {
+                detected = FactionType::Unknown;
+                return true; // Stop visiting
+            }
+
+            if (fID == 0x0001BCC0) detected = FactionType::Bandit;
+            else if (fID == 0x00027242) detected = FactionType::Vampire;
+            else if (fID == 0x00043599) detected = FactionType::Forsworn;
+            else if (fID == 0x00030C66 || fID == 0x0004359A) detected = FactionType::Warlock;
+            else if (fID == 0x0002430D || fID == 0x000B974F || fID == 0x0001BCC1 || fID == 0x000E6E16 || fID == 0x00050C17) detected = FactionType::Draugr;
+            else if (fID == 0x0002997E || fID == 0x0003AD57) detected = FactionType::Falmer;
+            else if (fID == 0x00043598) detected = FactionType::Dwemer;
+            else if (fID == 0x0001CB61 || fID == 0x0001CB62 || fID == 0x00023E73 || fID == 0x00028FDF || 
+                     fID == 0x0002C6C8 || fID == 0x00043596 || fID == 0x00043597 || fID == 0x00043594 || fID == 0x00043595) {
+                detected = FactionType::Animal;
+            }
+
+            if (detected != FactionType::Unknown) {
+                return true; // Found matching faction
+            }
+        }
+        return false;
+    });
+
+    if (detected == FactionType::Unknown) {
+        auto baseObj = actor->GetActorBase();
+        if (baseObj) {
+            std::string actorName = baseObj->GetName();
+            const char* eidStr = baseObj->GetFormEditorID();
+            std::string actorEid = eidStr ? eidStr : "";
+            std::string raceEid = (baseObj->race && baseObj->race->GetFormEditorID()) ? baseObj->race->GetFormEditorID() : "";
+
+            auto toLower = [](std::string s) {
+                for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return s;
+            };
+
+            std::string lowerName = toLower(actorName);
+            std::string lowerEid = toLower(actorEid);
+            std::string lowerRace = toLower(raceEid);
+
+            if (lowerName.find("skeleton") != std::string::npos || lowerEid.find("skeleton") != std::string::npos || lowerRace.find("skeleton") != std::string::npos ||
+                lowerName.find("draugr") != std::string::npos || lowerEid.find("draugr") != std::string::npos || lowerRace.find("draugr") != std::string::npos) {
+                detected = FactionType::Draugr;
+            }
+        }
+    }
+
+    return detected;
+}
+
+bool BanditSpawner::ClassifyActorFaction(RE::Actor* actor, FactionType targetFaction, bool& outIsKnownOtherFaction) {
+    outIsKnownOtherFaction = false;
+    if (!actor || targetFaction == FactionType::Unknown) return false;
+
+    FactionType detected = DetectActorFaction(actor);
+
+    if (detected != FactionType::Unknown) {
+        if (detected == targetFaction) {
+            return true;
+        } else {
+            outIsKnownOtherFaction = true;
+            return false;
+        }
+    }
+
+    return false;
 }
 
 // ── Dynamic Fallback Cache ────────────────────────────────────────
@@ -69,6 +160,86 @@ std::vector<RE::TESBoundObject*>& BanditSpawner::GetCacheForFaction(FactionType 
         default:                    return cacheUnknown;
     }
 }
+
+// ── Elite (Boss) Cache ────────────────────────────────────────────
+std::vector<RE::TESBoundObject*>& BanditSpawner::GetBossCacheForFaction(FactionType faction) {
+    static std::vector<RE::TESBoundObject*> cacheBossBandit;
+    static std::vector<RE::TESBoundObject*> cacheBossVampire;
+    static std::vector<RE::TESBoundObject*> cacheBossWarlock;
+    static std::vector<RE::TESBoundObject*> cacheBossForsworn;
+    static std::vector<RE::TESBoundObject*> cacheBossDraugr;
+    static std::vector<RE::TESBoundObject*> cacheBossAnimal;
+    static std::vector<RE::TESBoundObject*> cacheBossFalmer;
+    static std::vector<RE::TESBoundObject*> cacheBossDwemer;
+    static std::vector<RE::TESBoundObject*> cacheBossUnknown;
+
+    switch (faction) {
+        case FactionType::Bandit:   return cacheBossBandit;
+        case FactionType::Vampire:  return cacheBossVampire;
+        case FactionType::Warlock:  return cacheBossWarlock;
+        case FactionType::Forsworn: return cacheBossForsworn;
+        case FactionType::Draugr:   return cacheBossDraugr;
+        case FactionType::Animal:   return cacheBossAnimal;
+        case FactionType::Falmer:   return cacheBossFalmer;
+        case FactionType::Dwemer:   return cacheBossDwemer;
+        default:                    return cacheBossUnknown;
+    }
+}
+
+// ── Elite NPC tespiti ─────────────────────────────────────────────
+// Kural A: NPC adında elit anahtar kelime varsa → elit
+// Kural B: NPC taban seviyesi oyuncu seviyesine göre eşik değerinin üzerindeyse → elit
+bool BanditSpawner::IsEliteNPC(RE::Actor* /*actor*/, RE::TESNPC* npc) {
+    if (!npc) return false;
+
+    // ── Kural A: İsim tabanlı ──
+    auto toLower = [](std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+
+    std::string name = toLower(npc->GetName() ? npc->GetName() : "");
+    const char* eidRaw = npc->GetFormEditorID();
+    std::string eid = toLower(eidRaw ? eidRaw : "");
+
+    // Madenci, işçi, sivil veya esirler ASLA Boss/Elit olamaz
+    if (name.find("miner") != std::string::npos || eid.find("miner") != std::string::npos ||
+        name.find("worker") != std::string::npos || eid.find("worker") != std::string::npos ||
+        name.find("captive") != std::string::npos || eid.find("captive") != std::string::npos ||
+        name.find("prisoner") != std::string::npos || eid.find("prisoner") != std::string::npos ||
+        name.find("civilian") != std::string::npos || eid.find("civilian") != std::string::npos) {
+        return false;
+    }
+
+    // Elite anahtar kelimeler (vanilla + OBIS/Lawless uyumlu)
+    static const std::vector<std::string> eliteKeywords = {
+        "chief", "overlord", "wight lord", "master",
+        "hagraven", "vampire lord", "elder", "lich",
+        "shaman", "champion", "commander", "boss",
+        "warlock", "necromancer", "summoner", "witch"
+    };
+
+    for (const auto& kw : eliteKeywords) {
+        if (name.find(kw) != std::string::npos || eid.find(kw) != std::string::npos) {
+            return true;
+        }
+    }
+
+    // ── Kural B: Seviye tabanlı (sabit taban seviye, ölçeklenmiş değil) ──
+    // actorData.level: TESNPC'nin xEdit'teki sabit "Level" alanı (CalcMin gibi değil)
+    int npcBaseLevel = static_cast<int>(npc->actorData.level);
+    if (npcBaseLevel <= 0) return false; // Leveled (0) NPC'ler için atla
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    int pLevel = player ? player->GetLevel() : 1;
+
+    int eliteThreshold = 15; // Lvl < 25 için
+    if (pLevel >= 50)      eliteThreshold = 35;
+    else if (pLevel >= 25) eliteThreshold = 25;
+
+    return (npcBaseLevel >= eliteThreshold);
+}
+
 
 void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
     if (!cell || faction == FactionType::Unknown) return;
@@ -102,78 +273,39 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             continue;
         }
         
-        // 0xFF ile baslayan formlar (ornegin 0xFF00113C) oyun icerisinde olusturulmus gecici kopyalardir (Runtime Temporary).
-        // Bu formlardan NPC uretip (PlaceObjectAtMe) ardindan oyunu kaydedersek save dosyasi bozulur ve Save Load Crash yasanir!
-        // Bu yuzden sadece eklentilerden gelen statik formlari (0x00 - 0xFE) kabul etmeliyiz.
-        if (baseObj->GetFormID() >= 0xFF000000) {
-            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Runtime form (0xFF...)");
+        RE::TESBoundObject* effectiveBase = baseObj;
+        while (effectiveBase && effectiveBase->GetFormID() >= 0xFF000000) {
+            auto actorBaseData = effectiveBase->As<RE::TESActorBaseData>();
+            if (actorBaseData && actorBaseData->baseTemplateForm) {
+                effectiveBase = actorBaseData->baseTemplateForm->As<RE::TESBoundObject>();
+            } else {
+                break;
+            }
+        }
+
+        if (!effectiveBase || effectiveBase->GetFormID() >= 0xFF000000) {
+            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Runtime form (0xFF...) with no valid static template");
             continue;
         }
-        
-        // Dead actors: only useful as anchors, not as cache templates. Skip dead.
-        if (actor->IsDead()) {
-            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Dead");
-            continue;
+
+        // Çözümlenmiş template'in de unique olmadığını kontrol et
+        // (Örn: 0xFF Stalleo -> 0x00... Stalleo gibi özel NPC'lere çözümleniyor olabilir)
+        {
+            auto effectiveNPC = effectiveBase->As<RE::TESNPC>();
+            if (effectiveNPC && effectiveNPC->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
+                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Resolved template is a Unique actor");
+                continue;
+            }
         }
         
-        // Faction kontrolü yapalım (Öncelik: vanilla faction ID'leri)
-        bool isCorrectFaction = false;
+        // Faction kontrolü yapalım
         bool isKnownOtherFaction = false;
+        bool isCorrectFaction = ClassifyActorFaction(actor, faction, isKnownOtherFaction);
 
-        actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
-            if (f) {
-                RE::FormID fID = f->GetFormID();
-                
-                // Dost faction kontrolü
-                if (fID == 0x0005C84E || fID == 0x00019809) { 
-                    isCorrectFaction = false; 
-                    isKnownOtherFaction = true; 
-                    return true; 
-                }
-
-                // Bilinen factionları gruplayalım
-                bool isBandit = (fID == 0x0001BCC0);
-                bool isVampire = (fID == 0x00027242);
-                bool isForsworn = (fID == 0x00043599);
-                bool isWarlock = (fID == 0x00030C66);
-                bool isDraugr = (fID == 0x0002430D);
-                bool isAnimal = (
-                    fID == 0x0001CB62 || fID == 0x00028FDF || fID == 0x0002C6C8 || 
-                    fID == 0x00043596 || fID == 0x0004359A || fID == 0x00043598 || 
-                    fID == 0x00043594 || fID == 0x00043595 || fID == 0x00043597
-                );
-                bool isFalmer = (fID == 0x0002446A);
-                bool isDwemer = (fID == 0x0001BCC1);
-
-                if (faction == FactionType::Bandit && isBandit) isCorrectFaction = true;
-                else if (faction == FactionType::Vampire && isVampire) isCorrectFaction = true;
-                else if (faction == FactionType::Forsworn && isForsworn) isCorrectFaction = true;
-                else if (faction == FactionType::Warlock && isWarlock) isCorrectFaction = true;
-                else if (faction == FactionType::Draugr && isDraugr) isCorrectFaction = true;
-                else if (faction == FactionType::Animal && isAnimal) isCorrectFaction = true;
-                else if (faction == FactionType::Falmer && isFalmer) isCorrectFaction = true;
-                else if (faction == FactionType::Dwemer && isDwemer) isCorrectFaction = true;
-                else if (isBandit || isVampire || isForsworn || isWarlock || isDraugr || isAnimal || isFalmer || isDwemer) {
-                    // Kendi aradığımız faction değil, ama BAŞKA bir bilinen düşman faction'ına sahip.
-                    isKnownOtherFaction = true;
-                }
-            }
-            return false;
-        });
-
-        // ── KESİN DÜŞMANLIK KONTROLÜ (BUG FIX) ──
-        // NPC'nin oyuncuya karşı gerçekten düşmanca bir tavır sergileyip sergilemediğini kontrol et.
-        // SRC (Skyrim Realistic Conquering) gibi modlar zindanları "dost madencilere" (Embershard Miner)
-        // çevirdiğinde, bu madencilerin combatStyle'ı olsa bile oyuncuya dostturlar.
-        // IsHostileToActor() Faction ilişkilerine bakar, savaş başlamamış olsa bile doğru döner.
-        bool isHostile = actor->IsHostileToActor(player);
-
-        if (!isHostile) {
-            if (Settings::EnableLogging) {
-                SKSE::log::info("      -> SKIPPED: Not Hostile to Player");
-            }
-            continue;
-        }
+        // NOT: IsHostileToActor kontrolü KALDIRILDI.
+        // Draugr/iskelet gibi NPC'ler uyku animasyonunda ya da henüz detect edilmemiş olabilir.
+        // Ölü NPC'ler de geçerli klon şablonudur (FormID sabittir, canlılık durumu önemsizdir).
+        // Yanlış faction karışımını önlemek için isKnownOtherFaction + isGuard + isEssential yeterli.
 
         bool isAnimalKw = baseObj->HasKeywordString("ActorTypeAnimal");
         bool isCreatureKw = baseObj->HasKeywordString("ActorTypeCreature") || baseObj->HasKeywordString("ActorTypeMonster") || baseObj->HasKeywordString("ActorTypeDragon");
@@ -218,11 +350,12 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             }
         }
 
-        // GENIŞLETILMIŞ FALLBACK: Vanilla faction bulunamazsa combatStyle kontrolü kullan.
-        // Zaten isHostile == true olduğu için kesinlikle düşman olduklarını biliyoruz.
+        // GENIŞLETILMIŞ FALLBACK: Faction ID bulunamazsa combatStyle kontrolü kullan.
+        // isKnownOtherFaction=true ise farklı bir bilinen gruba ait → kesinlikle reddet.
+        // DİKKAT: SRC (Skyrim Realistic Conquering) veya diğer modlar tarafından eklenen dost/tarafsız
+        // madenciler ("Embershard Miner" vb.), işçiler veya esirler bir combatStyle'a sahip olabilirler
+        // ama haydut/düşman DEĞİLLERDİR. Bunların bandit/düşman olarak klonlanmasını engelliyoruz!
         if (!isCorrectFaction) {
-            // EĞER bu NPC başka BİLİNEN bir düşman grubuna aitse (örneğin Bandit arıyoruz ama bu bir Kurt), 
-            // fallback ile onu Bandit olarak kabul etmemeliyiz!
             if (isKnownOtherFaction) {
                 if (Settings::EnableLogging) {
                     SKSE::log::info("      -> SKIPPED: Belongs to a different known faction.");
@@ -235,14 +368,49 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             bool hasCombatStyle = (baseObj->combatStyle != nullptr);
             bool isGuard = actor->IsGuard();
 
-            // Creature ise (Draugr/Animal/Falmer/Dwemer) faction ID kontrolü çok güvenilmez,
-            // combatStyle yeterli.
-            bool isCreatureFaction = (faction == FactionType::Draugr ||
-                                      faction == FactionType::Animal ||
-                                      faction == FactionType::Falmer ||
-                                      faction == FactionType::Dwemer);
+            // İsim / EditorID filtresi: Miner, worker, captive, civilian, citizen gibi sivil/dost NPC'leri engelle
+            auto toLower = [](std::string s) {
+                for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return s;
+            };
+            std::string aName = toLower(baseObj->GetName() ? baseObj->GetName() : "");
+            const char* eidRaw = baseObj->GetFormEditorID();
+            std::string aEid = toLower(eidRaw ? eidRaw : "");
 
-            if (hasCombatStyle && !isGuard && (!isEssential || isCreatureFaction) && !isProtected) {
+            bool isCivilianOrMiner = (aName.find("miner") != std::string::npos || aEid.find("miner") != std::string::npos ||
+                                      aName.find("worker") != std::string::npos || aEid.find("worker") != std::string::npos ||
+                                      aName.find("captive") != std::string::npos || aEid.find("captive") != std::string::npos ||
+                                      aName.find("prisoner") != std::string::npos || aEid.find("prisoner") != std::string::npos ||
+                                      aName.find("citizen") != std::string::npos || aEid.find("citizen") != std::string::npos ||
+                                      aName.find("civilian") != std::string::npos || aEid.find("civilian") != std::string::npos);
+
+            // Oyuncuya düşman mı kontrolü: Eğer oyuncuya düşman değilse ve ismi sivil/miner ise ASLA fallback kabul etme
+            bool isHostile = actor->IsHostileToActor(player);
+
+            bool isHumanoidFaction = (faction == FactionType::Bandit || faction == FactionType::Warlock ||
+                                      faction == FactionType::Forsworn || faction == FactionType::Vampire);
+
+            bool allowFallback = hasCombatStyle && !isGuard && !isProtected && !isCivilianOrMiner;
+            if (isHumanoidFaction) {
+                allowFallback = allowFallback && !isEssential;
+                // Humanoid factionlarda ya isHostile olmalı ya da ismi/eid'si belirgin şekilde haydut/düşman olmalı
+                if (!isHostile) {
+                    bool hasHostileKw = (aName.find("bandit") != std::string::npos || aEid.find("bandit") != std::string::npos ||
+                                         aName.find("outlaw") != std::string::npos || aEid.find("outlaw") != std::string::npos ||
+                                         aName.find("thug") != std::string::npos || aEid.find("thug") != std::string::npos ||
+                                         aName.find("highwayman") != std::string::npos || aEid.find("highwayman") != std::string::npos ||
+                                         aName.find("marauder") != std::string::npos || aEid.find("marauder") != std::string::npos ||
+                                         aName.find("warlock") != std::string::npos || aEid.find("warlock") != std::string::npos ||
+                                         aName.find("necromancer") != std::string::npos || aEid.find("necromancer") != std::string::npos ||
+                                         aName.find("forsworn") != std::string::npos || aEid.find("forsworn") != std::string::npos ||
+                                         aName.find("vampire") != std::string::npos || aEid.find("vampire") != std::string::npos);
+                    if (!hasHostileKw) {
+                        allowFallback = false;
+                    }
+                }
+            }
+
+            if (allowFallback) {
                 isCorrectFaction = true;
                 if (Settings::EnableLogging) {
                     SKSE::log::info("    - CombatStyle fallback accepted: '{}' (BaseID: 0x{:08X})",
@@ -260,19 +428,41 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             // Düşman factionına aitse cache'e ekle
             bool exists = false;
             for (auto* cachedBase : cache) {
-                if (cachedBase == baseObj) {
+                if (cachedBase == effectiveBase) {
                     exists = true;
                     break;
                 }
             }
             if (!exists) {
-                cache.push_back(baseObj);
+                cache.push_back(effectiveBase);
                 added = true;
                 if (Settings::EnableLogging) {
-                    SKSE::log::info("      -> CACHED!");
+                    SKSE::log::info("      -> CACHED TEMPLATE: '{}' (FormID: 0x{:08X})",
+                        effectiveBase->GetName(), effectiveBase->GetFormID());
                 }
                 if (cache.size() > 50) { // Keep bounded
                     cache.erase(cache.begin());
+                }
+            }
+
+            // ── Elite / Boss Cache kontrolü ──
+            // Gerçek TESNPC template'ini al (effectiveBase zaten çözümlenmiş)
+            auto* effectiveNPC = effectiveBase->As<RE::TESNPC>();
+            if (effectiveNPC && IsEliteNPC(actor, effectiveNPC)) {
+                auto& bossCache = GetBossCacheForFaction(faction);
+                bool bossExists = false;
+                for (auto* cached : bossCache) {
+                    if (cached == effectiveBase) { bossExists = true; break; }
+                }
+                if (!bossExists) {
+                    bossCache.push_back(effectiveBase);
+                    if (Settings::EnableLogging) {
+                        SKSE::log::info("      -> BOSS CACHED TEMPLATE: '{}' (FormID: 0x{:08X})",
+                            effectiveBase->GetName(), effectiveBase->GetFormID());
+                    }
+                    if (bossCache.size() > 30) {
+                        bossCache.erase(bossCache.begin());
+                    }
                 }
             }
         }
@@ -285,21 +475,57 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
     }
 }
 
-// ── Spawn count based on player level ────────────────────────────
+// ── Spawn count based on player level + density ───────────────────
 int BanditSpawner::GetSpawnCount() {
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return 0;
 
     int pLevel = player->GetLevel();
-    if (pLevel < 10) return 0; // Lvl 1-9 hic spawn yok
+    if (pLevel < 10) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  GetSpawnCount: Player level {} < 10, no spawns (deliberate design).", pLevel);
+        }
+        return 0; // Lvl 1-9 hic spawn yok
+    }
 
     int maxSpawns = Settings::MaxSpawnsLevel10_24;
     if (pLevel >= 50)      maxSpawns = Settings::MaxSpawnsLevel50Plus;
     else if (pLevel >= 25) maxSpawns = Settings::MaxSpawnsLevel25_49;
 
     if (maxSpawns < 1) maxSpawns = 1;
-    std::uniform_int_distribution<> dist(1, maxSpawns);
-    return dist(GetRNG());
+
+    // ── SpawnDensity uygulaması ──
+    // %100 → her zaman maksimum (sabit, rastgele yok)
+    // %x   → random(1, max(1, round(maxSpawns * x / 100)))
+    // %0   → 0 spawn
+    int density = Settings::SpawnDensity;
+    if (density <= 0) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  GetSpawnCount: SpawnDensity=0, no spawns.");
+        }
+        return 0;
+    }
+
+    if (density >= 100) {
+        // Tam yoğunluk: her zaman maksimum
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  GetSpawnCount: SpawnDensity=100%, spawning max={}", maxSpawns);
+        }
+        return maxSpawns;
+    }
+
+    // Kısmi yoğunluk: üst limiti density ile ölçekle, rastgeleliği koru
+    int scaledMax = static_cast<int>(std::round(maxSpawns * density / 100.0f));
+    if (scaledMax < 1) scaledMax = 1;
+
+    std::uniform_int_distribution<> dist(1, scaledMax);
+    int result = dist(GetRNG());
+
+    if (Settings::EnableLogging) {
+        SKSE::log::info("  GetSpawnCount: density={}%, maxSpawns={}, scaledMax={}, result={}",
+            density, maxSpawns, scaledMax, result);
+    }
+    return result;
 }
 
 struct BossSpawnInfo {
@@ -322,6 +548,33 @@ BossSpawnInfo GetBossSpawnInfo(int pLevel) {
 // Artık %100 her zaman "Dinamik Kopyalama (Cache)" sisteminden, halihazırda oyunda var olan 
 // gerçek "TESNPC" objelerini kullanıyoruz.
 static RE::TESBoundObject* GetFactionBaseObject(FactionType faction, bool isBoss) {
+    // ── Boss spawn için önce elit cache'e bak ──
+    if (isBoss) {
+        auto& bossCache = BanditSpawner::GetBossCacheForFaction(faction);
+
+        // Boss cache boşsa mevcut hücreyi tekrar tara (yeni elit NPC keşfedilmiş olabilir)
+        if (bossCache.empty()) {
+            auto player = RE::PlayerCharacter::GetSingleton();
+            if (player && player->GetParentCell()) {
+                BanditSpawner::UpdateCache(player->GetParentCell(), faction);
+            }
+        }
+
+        if (!bossCache.empty()) {
+            std::uniform_int_distribution<> dist(0, (int)bossCache.size() - 1);
+            auto* cachedBoss = bossCache[dist(BanditSpawner::GetRNG())];
+            if (cachedBoss) {
+                SKSE::log::info("  BOSS DYNAMIC COPY: Using elite NPC '{}' (Faction {} | BossCache size: {})",
+                    cachedBoss->GetName(), static_cast<int>(faction), bossCache.size());
+                return cachedBoss;
+            }
+        }
+
+        // Boss cache boşsa normal cache'e düş (fallback)
+        SKSE::log::warn("  BOSS FALLBACK: No elite NPCs cached for Faction {}, using normal cache.", static_cast<int>(faction));
+    }
+
+    // Normal (non-boss) seçim veya boss fallback
     auto& cache = BanditSpawner::GetCacheForFaction(faction);
     
     // Eğer cache boşsa, anlık olarak mevcut hücreyi tekrar tara
@@ -346,9 +599,90 @@ static RE::TESBoundObject* GetFactionBaseObject(FactionType faction, bool isBoss
 }
 
 // ── Determine faction from location keywords ─────────────────────
+
+FactionType BanditSpawner::ScanCellForDominantFaction(RE::TESObjectCELL* cell) {
+    if (!cell) return FactionType::Unknown;
+    
+    std::unordered_map<FactionType, int> counts;
+    auto player = RE::PlayerCharacter::GetSingleton();
+    
+    for (auto& ref : cell->GetRuntimeData().references) {
+        if (!ref) continue;
+        auto actor = ref->As<RE::Actor>();
+        if (!actor || actor == player) continue;
+        
+        auto baseObj = actor->GetActorBase();
+        if (!baseObj) continue;
+        
+        FactionType foundFaction = DetectActorFaction(actor);
+        
+        // Sadece Settings'te açık olan factionları say
+        if (foundFaction == FactionType::Bandit && !Settings::EnableBandits) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Vampire && !Settings::EnableVampires) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Forsworn && !Settings::EnableForsworn) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Warlock && !Settings::EnableWarlocks) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Draugr && !Settings::EnableDraugr) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Falmer && !Settings::EnableFalmer) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Dwemer && !Settings::EnableDwemer) foundFaction = FactionType::Unknown;
+        if (foundFaction == FactionType::Animal && !Settings::EnableAnimals) foundFaction = FactionType::Unknown;
+
+        if (foundFaction != FactionType::Unknown) {
+            counts[foundFaction]++;
+        }
+    }
+    
+    FactionType bestFaction = FactionType::Unknown;
+    int maxCount = 0;
+    for (auto& pair : counts) {
+        if (pair.second > maxCount) {
+            maxCount = pair.second;
+            bestFaction = pair.first;
+        }
+    }
+    
+    return bestFaction;
+}
+
+FactionType BanditSpawner::DetermineFactionForCell(RE::TESObjectCELL* cell, RE::BGSLocation* loc) {
+    if (loc) {
+        // Şehir, kasaba veya yerleşim yeriyse KESİNLİKLE tarama yapma
+        auto kwdCity = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeCity");
+        auto kwdTown = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeTown");
+        auto kwdSettlement = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeSettlement");
+        auto kwdDwelling = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDwelling");
+        auto kwdPlayerHouse = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypePlayerHouse");
+        
+        if (!kwdCity) kwdCity = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D7);
+        if (!kwdTown) kwdTown = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D8);
+        if (!kwdSettlement) kwdSettlement = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0F);
+        if (!kwdDwelling) kwdDwelling = RE::TESForm::LookupByID<RE::BGSKeyword>(0x0008CA7C);
+        if (!kwdPlayerHouse) kwdPlayerHouse = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8DE4);
+
+        if ((kwdCity && loc->HasKeyword(kwdCity)) ||
+            (kwdTown && loc->HasKeyword(kwdTown)) ||
+            (kwdSettlement && loc->HasKeyword(kwdSettlement)) ||
+            (kwdDwelling && loc->HasKeyword(kwdDwelling)) ||
+            (kwdPlayerHouse && loc->HasKeyword(kwdPlayerHouse))) {
+            return FactionType::Unknown;
+        }
+    }
+
+    FactionType dominant = ScanCellForDominantFaction(cell);
+    if (dominant != FactionType::Unknown) {
+        if (Settings::EnableLogging) {
+            SKSE::log::info("  DetermineFactionForCell: Found dominant faction {} in cell", static_cast<int>(dominant));
+        }
+        return dominant;
+    }
+    
+    // Eğer hücrede düşman yoksa (giriş odası vb.), location'a geri dön
+    return GetFactionFromLocation(loc);
+}
+
 FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (!loc) return FactionType::Unknown;
 
+    // Şehir, kasaba veya yerleşim yeriyse KESİNLİKLE spawn atma
     auto kwdBandit   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeBanditCamp");
     auto kwdVampire  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeVampireLair");
     auto kwdWarlock  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeWarlockLair");
@@ -440,6 +774,23 @@ static void ParseAndAddToCache(const char* csvStr, FactionType faction) {
         auto npc = form->As<RE::TESNPC>();
         if (!npc) { ++skipped; continue; }
         if (npc->IsUnique()) { ++skipped; continue; }
+
+        // Sivil / madenci / tutsak isim kontrolü (önceki oturumlarda yanlış kaydedilmiş olanları temizle)
+        auto toLower = [](std::string s) {
+            for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return s;
+        };
+        std::string nName = toLower(npc->GetName() ? npc->GetName() : "");
+        const char* nEidRaw = npc->GetFormEditorID();
+        std::string nEid = toLower(nEidRaw ? nEidRaw : "");
+        if (nName.find("miner") != std::string::npos || nEid.find("miner") != std::string::npos ||
+            nName.find("worker") != std::string::npos || nEid.find("worker") != std::string::npos ||
+            nName.find("captive") != std::string::npos || nEid.find("captive") != std::string::npos ||
+            nName.find("prisoner") != std::string::npos || nEid.find("prisoner") != std::string::npos ||
+            nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos) {
+            ++skipped;
+            continue;
+        }
 
         // Zaten cache'de var mı?
         auto it = std::find(cache.begin(), cache.end(), form);
@@ -548,6 +899,151 @@ void BanditSpawner::SaveCachedFormIDs() {
     }
 }
 
+// ── Boss NPC cache INI persistence ───────────────────────────────
+void BanditSpawner::SaveCachedBossFormIDs() {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    ini.LoadFile(Settings::INI_PATH);
+
+    constexpr FactionType factions[] = {
+        FactionType::Bandit, FactionType::Vampire, FactionType::Warlock,
+        FactionType::Forsworn, FactionType::Draugr, FactionType::Animal,
+        FactionType::Falmer, FactionType::Dwemer
+    };
+
+    for (auto f : factions) {
+        const char* key = FactionToINIKey(f);
+        if (!key) continue;
+
+        auto& bossCache = GetBossCacheForFaction(f);
+        if (bossCache.empty()) continue;
+
+        // Mevcut kayıtlı ID'leri oku
+        std::string existing;
+        const char* exVal = ini.GetValue("CachedBossNPCs", key, nullptr);
+        if (exVal) existing = exVal;
+
+        std::set<RE::FormID> known;
+        {
+            std::istringstream ss(existing);
+            std::string tok;
+            while (std::getline(ss, tok, ';')) {
+                if (tok.empty()) continue;
+                try { known.insert(static_cast<RE::FormID>(std::stoul(tok, nullptr, 16))); }
+                catch (...) {}
+            }
+        }
+
+        bool dirty = false;
+        for (auto* obj : bossCache) {
+            if (!obj) continue;
+            RE::FormID fid = obj->GetFormID();
+            if (fid >= 0xFF000000) continue;
+            if (known.count(fid)) continue;
+            known.insert(fid);
+            dirty = true;
+        }
+
+        if (!dirty) continue;
+
+        std::string result;
+        result.reserve(known.size() * 10);
+        for (RE::FormID fid : known) {
+            if (!result.empty()) result += ';';
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%08X", fid);
+            result += buf;
+        }
+
+        ini.SetValue("CachedBossNPCs", key, result.c_str(),
+            "; Otomatik kesfedilen ELITE (boss) NPC FormID'leri - elle duzenleme YAPMAYIN");
+    }
+
+    SI_Error rc = ini.SaveFile(Settings::INI_PATH);
+    if (rc == SI_OK) {
+        SKSE::log::info("SaveCachedBossFormIDs: INI updated.");
+    } else {
+        SKSE::log::error("SaveCachedBossFormIDs: INI save FAILED (error={}).", static_cast<int>(rc));
+    }
+}
+
+void BanditSpawner::LoadCachedBossFormIDs() {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    if (ini.LoadFile(Settings::INI_PATH) != SI_OK) {
+        SKSE::log::info("LoadCachedBossFormIDs: INI not found or unreadable, skipping.");
+        return;
+    }
+
+    constexpr FactionType factions[] = {
+        FactionType::Bandit, FactionType::Vampire, FactionType::Warlock,
+        FactionType::Forsworn, FactionType::Draugr, FactionType::Animal,
+        FactionType::Falmer, FactionType::Dwemer
+    };
+
+    for (auto f : factions) {
+        const char* key = FactionToINIKey(f);
+        if (!key) continue;
+        const char* val = ini.GetValue("CachedBossNPCs", key, nullptr);
+        if (!val || val[0] == '\0') continue;
+
+        auto& bossCache = GetBossCacheForFaction(f);
+
+        std::istringstream ss(val);
+        std::string token;
+        int added = 0, skipped = 0;
+        while (std::getline(ss, token, ';')) {
+            auto trim = [](std::string& s) {
+                while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+                while (!s.empty() && (s.back()  == ' ' || s.back()  == '\t')) s.pop_back();
+            };
+            trim(token);
+            if (token.empty()) continue;
+
+            RE::FormID fid = 0;
+            try { fid = static_cast<RE::FormID>(std::stoul(token, nullptr, 16)); }
+            catch (...) { ++skipped; continue; }
+
+            if (fid >= 0xFF000000) { ++skipped; continue; }
+
+            auto* form = RE::TESForm::LookupByID<RE::TESBoundObject>(fid);
+            if (!form) { ++skipped; continue; }
+
+            auto* npc = form->As<RE::TESNPC>();
+            if (!npc || npc->IsUnique()) { ++skipped; continue; }
+
+            // Sivil / madenci / tutsak isim kontrolü
+            auto toLower = [](std::string s) {
+                for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return s;
+            };
+            std::string nName = toLower(npc->GetName() ? npc->GetName() : "");
+            const char* nEidRaw = npc->GetFormEditorID();
+            std::string nEid = toLower(nEidRaw ? nEidRaw : "");
+            if (nName.find("miner") != std::string::npos || nEid.find("miner") != std::string::npos ||
+                nName.find("worker") != std::string::npos || nEid.find("worker") != std::string::npos ||
+                nName.find("captive") != std::string::npos || nEid.find("captive") != std::string::npos ||
+                nName.find("prisoner") != std::string::npos || nEid.find("prisoner") != std::string::npos ||
+                nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos) {
+                ++skipped;
+                continue;
+            }
+
+            auto it = std::find(bossCache.begin(), bossCache.end(), form);
+            if (it != bossCache.end()) { ++skipped; continue; }
+
+            bossCache.push_back(form);
+            ++added;
+        }
+
+        if (Settings::EnableLogging && (added > 0 || skipped > 0)) {
+            SKSE::log::info("  LoadCachedBossFormIDs [{}]: +{} loaded, {} skipped",
+                key, added, skipped);
+        }
+    }
+    SKSE::log::info("LoadCachedBossFormIDs: complete.");
+}
+
 
 // ── Helper: Spawn a single actor ─────────────────────────────────
 // XMarker YAKLAŞIMI KALDIRILDI (CRASH FIX):
@@ -556,8 +1052,201 @@ void BanditSpawner::SaveCachedFormIDs() {
 // ForEachReferenceInRange sırasında bu yarı silinmiş referansa erişince null pointer
 // (rax=0x0) dereference ile çöküyordu.
 // Şimdi: doğrudan anchor üzerinde spawn et, ardından SetPosition ile konumla.
+// İÇ MEKANDA HAVOK RAYCAST YASAK — HDT-SMP ile race condition → SEH crash (catch ile yakalanamaz)
+// Dış mekan için Havok zemin tespiti
+static bool GetGroundHeight(RE::TESObjectCELL* cell, const RE::NiPoint3& pos, float& groundZ, bool& isWalkableSlope) {
+    if (!cell) return false;
+    // İç mekanda PickObject çağrısı HDT-SMP physics adımıyla çakışır → access violation → CRASH
+    if (cell->IsInteriorCell()) return false;
+
+    auto bhkWorld = cell->GetbhkWorld();
+    if (!bhkWorld) return false;
+
+    auto havokWorld = bhkWorld->GetWorld1();
+    if (!havokWorld) return false;
+
+    constexpr float scale = 0.0142875f;
+    RE::bhkPickData pickData;
+    RE::NiPoint3 start = pos;
+    start.z += 500.0f;
+    RE::NiPoint3 end = pos;
+    end.z -= 1000.0f;
+
+    pickData.rayInput.from = RE::hkVector4(start.x * scale, start.y * scale, start.z * scale, 0.0f);
+    pickData.rayInput.to = RE::hkVector4(end.x * scale, end.y * scale, end.z * scale, 0.0f);
+
+    bhkWorld->PickObject(pickData);
+    if (pickData.rayOutput.HasHit()) {
+        groundZ = start.z + (end.z - start.z) * pickData.rayOutput.hitFraction;
+        isWalkableSlope = (pickData.rayOutput.normal.quad.m128_f32[2] >= 0.4f);
+        return true;
+    }
+    return false;
+}
+
+// Dış mekan için tavan kontrolü (iç mekanda her zaman geçer)
+static bool HasHeadroom(RE::TESObjectCELL* cell, const RE::NiPoint3& groundPos, float minHeadroom = 120.0f) {
+    if (!cell) return true;
+    // İç mekanda Havok raycast yasak — güvenli varsay
+    if (cell->IsInteriorCell()) return true;
+
+    auto bhkWorld = cell->GetbhkWorld();
+    if (!bhkWorld || !bhkWorld->GetWorld1()) return true;
+
+    constexpr float scale = 0.0142875f;
+    RE::bhkPickData pickData;
+    RE::NiPoint3 start = groundPos;
+    start.z += 10.0f;
+    RE::NiPoint3 end = groundPos;
+    end.z += (minHeadroom + 10.0f);
+
+    pickData.rayInput.from = RE::hkVector4(start.x * scale, start.y * scale, start.z * scale, 0.0f);
+    pickData.rayInput.to = RE::hkVector4(end.x * scale, end.y * scale, end.z * scale, 0.0f);
+
+    bhkWorld->PickObject(pickData);
+    if (pickData.rayOutput.HasHit()) {
+        if (pickData.rayOutput.hitFraction < 0.90f) {
+            return false; // Düşük tavan veya kaya içi engeli
+        }
+    }
+    return true;
+}
+
+// Dış mekan için yol hattı kontrolü (iç mekanda her zaman geçer)
+static bool IsPathClear(RE::TESObjectCELL* cell, const RE::NiPoint3& fromPos, const RE::NiPoint3& toPos) {
+    if (!cell) return true;
+    // İç mekanda Havok raycast yasak — güvenli varsay
+    if (cell->IsInteriorCell()) return true;
+
+    auto bhkWorld = cell->GetbhkWorld();
+    if (!bhkWorld || !bhkWorld->GetWorld1()) return true;
+
+    constexpr float scale = 0.0142875f;
+    RE::bhkPickData pickData;
+
+    RE::NiPoint3 start = fromPos;
+    start.z += 60.0f;
+    RE::NiPoint3 end = toPos;
+    end.z += 60.0f;
+
+    pickData.rayInput.from = RE::hkVector4(start.x * scale, start.y * scale, start.z * scale, 0.0f);
+    pickData.rayInput.to = RE::hkVector4(end.x * scale, end.y * scale, end.z * scale, 0.0f);
+
+    bhkWorld->PickObject(pickData);
+    if (pickData.rayOutput.HasHit()) {
+        if (pickData.rayOutput.hitFraction < 0.90f) {
+            return false; // Dağ kayası veya yapı duvarı engelliyor
+        }
+    }
+    return true;
+}
+
+static RE::NiPoint3 FindValidSpawnPosition(RE::TESObjectREFR* anchor, float minDist, float maxDist,
+                                          float baseAngle = -1.0f, float arcSpread = static_cast<float>(2.0 * M_PI)) {
+    RE::NiPoint3 anchorPos = anchor->GetPosition();
+    auto cell = anchor->GetParentCell();
+    auto& rng = BanditSpawner::GetRNG();
+
+    bool isInterior = cell ? cell->IsInteriorCell() : false;
+
+    std::uniform_real_distribution<float> radiusDist(minDist, maxDist);
+    std::uniform_real_distribution<float> angleDist(0.0f, static_cast<float>(2.0 * M_PI));
+
+    // ── İÇ MEKAN: Havok raycast yok, anchor çevresine rastgele offset ──────
+    if (isInterior) {
+        // İç mekanlarda anchor NPC'nin tam üzerinde olduğu konumdur.
+        // Hafif rastgele X/Y sapması; Z anchor ile aynı (NPC yerçekimiyle yere oturur).
+        bool useArc = (baseAngle >= 0.0f);
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            float angle;
+            if (useArc) {
+                std::uniform_real_distribution<float> arcDist(-arcSpread * 0.5f, arcSpread * 0.5f);
+                angle = baseAngle + arcDist(rng);
+            } else {
+                angle = angleDist(rng);
+            }
+            float radius = radiusDist(rng);
+            RE::NiPoint3 candidate = anchorPos;
+            candidate.x += radius * std::cos(angle);
+            candidate.y += radius * std::sin(angle);
+            // Z olduğu gibi kalır; Havok simülasyonu NPC'yi zemine oturtacak
+            return candidate;
+        }
+        // Yedek: anchor'ın tam üstü
+        RE::NiPoint3 fallback = anchorPos;
+        std::uniform_real_distribution<float> tiny(-20.0f, 20.0f);
+        fallback.x += tiny(rng);
+        fallback.y += tiny(rng);
+        return fallback;
+    }
+
+    // ── DIŞ MEKAN: Havok raycast ile zemin + tavan + yol hattı kontrolü ────
+    float maxZDiff = 250.0f;
+    float requiredHeadroom = 130.0f;
+    bool useArc = (baseAngle >= 0.0f);
+
+    for (int attempt = 0; attempt < 15; ++attempt) {
+        float angle;
+        if (useArc) {
+            std::uniform_real_distribution<float> arcDist(-arcSpread * 0.5f, arcSpread * 0.5f);
+            angle = baseAngle + arcDist(rng);
+        } else {
+            angle = angleDist(rng);
+        }
+        float radius = radiusDist(rng);
+
+        RE::NiPoint3 candidate = anchorPos;
+        candidate.x += radius * std::cos(angle);
+        candidate.y += radius * std::sin(angle);
+
+        float groundZ = 0.0f;
+        bool isWalkable = false;
+
+        if (GetGroundHeight(cell, candidate, groundZ, isWalkable)) {
+            float zDiff = std::abs(groundZ - anchorPos.z);
+            if (isWalkable && zDiff <= maxZDiff) {
+                candidate.z = groundZ + 10.0f;
+
+                if (HasHeadroom(cell, candidate, requiredHeadroom)) {
+                    if (IsPathClear(cell, anchorPos, candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+    }
+
+    // Dış mekan yedek: daha kısa yarıçapla tekrar dene
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        float angle = angleDist(rng);
+        float radius = 75.0f;
+        RE::NiPoint3 candidate = anchorPos;
+        candidate.x += radius * std::cos(angle);
+        candidate.y += radius * std::sin(angle);
+
+        float groundZ = 0.0f;
+        bool isWalkable = false;
+        if (GetGroundHeight(cell, candidate, groundZ, isWalkable)) {
+            if (std::abs(groundZ - anchorPos.z) <= 150.0f) {
+                candidate.z = groundZ + 10.0f;
+                if (HasHeadroom(cell, candidate, requiredHeadroom) && IsPathClear(cell, anchorPos, candidate)) {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    // Son çare: anchor pozisyonunun hemen yanına koy
+    RE::NiPoint3 fallback = anchorPos;
+    std::uniform_real_distribution<float> offsetDist(-30.0f, 30.0f);
+    fallback.x += offsetDist(rng);
+    fallback.y += offsetDist(rng);
+    return fallback;
+}
+
+// ── Helper: Spawn a single actor ─────────────────────────────────
 static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionType faction, bool isBoss,
-                                              float offsetX, float offsetY) {
+                                              const RE::NiPoint3& targetPos) {
     auto baseObj = GetFactionBaseObject(faction, isBoss);
 
     if (!baseObj) {
@@ -566,37 +1255,55 @@ static RE::ObjectRefHandle SpawnSingleActor(RE::TESObjectREFR* anchor, FactionTy
         return RE::ObjectRefHandle();
     }
 
-    // Hedef pozisyon hesapla: anchor + XY offset, anchor'in Z'si
-    RE::NiPoint3 targetPos = anchor->GetPosition();
-    targetPos.x += offsetX;
-    targetPos.y += offsetY;
-
-    // Doğrudan anchor üzerinde spawn et (XMarker yok = hayalet referans yok)
+    // Doğrudan anchor üzerinde spawn et
     auto spawned = anchor->PlaceObjectAtMe(baseObj, false);
     if (!spawned) {
         SKSE::log::error("  SPAWN FAILED: PlaceObjectAtMe returned null for '{}'", baseObj->GetName());
         return RE::ObjectRefHandle();
     }
 
-    // Hedef konuma taşı (3D yokken de çalışır, oyun 3D yüklenince uygular)
+    // Doğrulanmış zemin konumuna taşı
     spawned->SetPosition(targetPos);
 
     auto handle = spawned->GetHandle();
 
     if (Settings::EnableLogging) {
-        SKSE::log::info("  SPAWNED: '{}' (boss={}) offset=({:.0f},{:.0f}) refID=0x{:08X}",
-                        baseObj->GetName(), isBoss, offsetX, offsetY, spawned->GetFormID());
+        SKSE::log::info("  SPAWNED: '{}' (boss={}) pos=({:.0f},{:.0f},{:.0f}) refID=0x{:08X}",
+                        baseObj->GetName(), isBoss, targetPos.x, targetPos.y, targetPos.z, spawned->GetFormID());
     }
 
-    // FixActorAI KALDIRILDI (CRASH FIX):
-    // EvaluatePackage → DeathDropOverhaul crash, EnableAI → UnreadBooksGlow crash tetikliyordu.
-    // PlaceObjectAtMe ile spawn edilen aktörler AI'larını ve düşmanlıklarını
-    // Skyrim'in kendi sistemi aracılığıyla doğal olarak başlatır.
+    // Bir sonraki karede (main thread) Draugr / Ambush / Sleep animasyon durumunu sıfırla ve savaşa sok
+    auto task = SKSE::GetTaskInterface();
+    if (task) {
+        task->AddTask([handle]() {
+            auto ref = handle.get();
+            if (!ref) return;
+            auto actor = ref->As<RE::Actor>();
+            if (!actor || actor->IsDead()) return;
+
+            // Draugr ve diğer sleeping/ambush durumundaki NPC'lerin animasyon kilitlerini kaldır (uyandır)
+            actor->SetGraphVariableBool("bIsAmbushing", false);
+            actor->SetGraphVariableBool("bInAmbushState", false);
+            actor->SetGraphVariableBool("IsSleeping", false);
+            actor->SetGraphVariableBool("bAmbush", false);
+            actor->SetGraphVariableBool("bAmbushState", false);
+
+            actor->EvaluatePackage(true, false);
+
+            // ── SALDIRGANLIK DÜZELTMESİ ──
+            // Draugr gibi orijinalinde "uykuda / tuzakla uyandırılan" NPC şablonlarının
+            // Aggression değeri genelde Unaggressive/Aggressive Only If Provoked'tır.
+            // Doğal algılama sistemini DEĞİŞTİRMEZ - sadece NPC bir kez düşman algıladığında
+            // pasif beklemek yerine inisiyatif alıp saldırmasını sağlar.
+            auto avOwner = actor->AsActorValueOwner();
+            if (avOwner) {
+                avOwner->SetActorValue(RE::ActorValue::kAggression, 2.0f); // 2 = Very Aggressive
+            }
+        });
+    }
 
     return handle;
 }
-
-
 
 // ── Main spawn: Reinforcements ───────────────────────────────────
 SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionType faction) {
@@ -611,8 +1318,6 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
     SKSE::log::info("  Count={}, Faction={}, Interior={}, Cell=0x{:08X}", 
                     count, static_cast<int>(faction), isInterior, cell ? cell->GetFormID() : 0);
 
-    // Cache'i spawn döngüsünden ÖNCE bir kez doldur (her spawn için ayrı ayrı taramak yerine)
-    // Bu hem performansı artırır hem de hata ayıklamayı kolaylaştırır.
     if (cell) {
         UpdateCache(cell, faction);
         auto& cacheCheck = GetCacheForFaction(faction);
@@ -626,12 +1331,30 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
                              static_cast<int>(faction), cell->GetFormID());
             return result;
         }
+
+        // Performans limiti: Sadece BİZİM spawn ettiğimiz runtime aktörleri say
+        // (refID >= 0xFF000000 → PlaceObjectAtMe ile oluşturulan runtime referansları)
+        // Vanilla / mod NPC'lerini saymıyoruz; onlar bu limitten etkilenmemeli.
+        int ourSpawnedInCell = 0;
+        for (auto& ref : cell->GetRuntimeData().references) {
+            if (!ref) continue;
+            auto a = ref->As<RE::Actor>();
+            if (a && !a->IsDead() && (a->GetFormID() & 0xFF000000) == 0xFF000000) {
+                ourSpawnedInCell++;
+            }
+        }
+        if (ourSpawnedInCell + count > Settings::MaxRuntimeActorsPerCell) {
+            int adjusted = Settings::MaxRuntimeActorsPerCell - ourSpawnedInCell;
+            if (adjusted < 0) adjusted = 0;
+            SKSE::log::warn("  MaxRuntimeActorsPerCell limit reached (ourSpawned={}, max={}, desired={}). Adjusted count to {}",
+                            ourSpawnedInCell, Settings::MaxRuntimeActorsPerCell, count, adjusted);
+            count = adjusted;
+            if (count <= 0) return result;
+        }
     }
 
     auto& rng = GetRNG();
 
-    // İç mekan: 200-500 birim (mağara içinde kalır)
-    // Dış mekan: PatrolSpawnDistance kadar uzak (devriye etkisi)
     float minDist, maxDist;
     if (isInterior) {
         minDist = 200.0f;
@@ -642,7 +1365,6 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         maxDist = base * 1.3f;
     }
 
-    // Boss spawn kontrolü: garantili + ekstra şans
     int pLevel = player->GetLevel();
     auto bossInfo = GetBossSpawnInfo(pLevel);
     int totalBossCount = bossInfo.guaranteed;
@@ -657,45 +1379,43 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
             totalBossCount, bossInfo.guaranteed, bossInfo.extraChance, pLevel);
     }
 
-    // Anchor'lari topla: Hucrede halihazirda var olan dusmanlari konum referansi olarak kullan.
-    // NOT: Anchor sadece KONUM icin kullanilir. Cache'deki NPC template'i spawn icin kullanilir.
-    // Bu nedenle anchor arama kosullari UpdateCache ile ayni olmalı.
     std::vector<RE::TESObjectREFR*> anchors;
     if (cell) {
         for (auto& ref : cell->GetRuntimeData().references) {
             if (!ref) continue;
             auto actor = ref->As<RE::Actor>();
             if (!actor || actor == player) continue;
-            if (actor->IsDead()) continue; // Olü aktörler konum referansı için işe yaramaz
+            if (actor->IsDead()) continue;
             
             auto baseObj = actor->GetActorBase();
             if (!baseObj) continue;
 
-            bool isCorrectFaction = false;
-            actor->VisitFactions([&](RE::TESFaction* f, int8_t rank) {
-                if (f) {
-                    RE::FormID fID = f->GetFormID();
-                    if (faction == FactionType::Bandit && fID == 0x0001BCC0) isCorrectFaction = true;
-                    else if (faction == FactionType::Vampire && fID == 0x00027242) isCorrectFaction = true;
-                    else if (faction == FactionType::Forsworn && fID == 0x00043599) isCorrectFaction = true;
-                    else if (faction == FactionType::Warlock && fID == 0x00030C66) isCorrectFaction = true;
-                    else if (faction == FactionType::Draugr && fID == 0x0002430D) isCorrectFaction = true;
-                    else if (faction == FactionType::Animal && (fID == 0x0001CB62 || fID == 0x00028FDF)) isCorrectFaction = true;
-                    else if (faction == FactionType::Falmer && fID == 0x0002446A) isCorrectFaction = true;
-                    else if (faction == FactionType::Dwemer && fID == 0x0001BCC1) isCorrectFaction = true;
-                    else if (fID == 0x0005C84E || fID == 0x00019809) { isCorrectFaction = false; return true; } // PlayerFaction -> reddet
-                }
-                return false;
-            });
+            bool isKnownOther = false;
+            bool isCorrectFaction = ClassifyActorFaction(actor, faction, isKnownOther);
             
-            // Geniş fallback: combatStyle kontrolü
-            if (!isCorrectFaction) {
+            if (!isCorrectFaction && !isKnownOther) {
                 bool isEssential = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential);
                 bool isProtected = baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected);
                 bool hasCombatStyle = (baseObj->combatStyle != nullptr);
                 bool isGuard = actor->IsGuard();
-                if (hasCombatStyle && !isGuard && !isEssential && !isProtected) {
-                    isCorrectFaction = true;
+                bool isCreatureFaction = (faction == FactionType::Animal);
+
+                auto toLower = [](std::string s) {
+                    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    return s;
+                };
+                std::string aName = toLower(baseObj->GetName() ? baseObj->GetName() : "");
+                const char* eidRaw = baseObj->GetFormEditorID();
+                std::string aEid = toLower(eidRaw ? eidRaw : "");
+                bool isCivilianOrMiner = (aName.find("miner") != std::string::npos || aEid.find("miner") != std::string::npos ||
+                                          aName.find("worker") != std::string::npos || aEid.find("worker") != std::string::npos ||
+                                          aName.find("captive") != std::string::npos || aEid.find("captive") != std::string::npos ||
+                                          aName.find("prisoner") != std::string::npos || aEid.find("prisoner") != std::string::npos);
+
+                if (hasCombatStyle && !isGuard && (!isEssential || isCreatureFaction) && !isProtected && !isCivilianOrMiner) {
+                    if (actor->IsHostileToActor(player)) {
+                        isCorrectFaction = true;
+                    }
                 }
             }
 
@@ -709,7 +1429,6 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         SKSE::log::info("  Found {} existing valid anchors in the cell.", anchors.size());
     }
 
-
     for (int i = 0; i < count; ++i) {
         bool isBoss = (i < totalBossCount);
 
@@ -717,23 +1436,16 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
         float currentMinDist = minDist;
         float currentMaxDist = maxDist;
 
-        // Eger hucrede halihazirda ayni tip dusman varsa, onlardan birinin yaninda dogur (cluster effect)
         if (!anchors.empty()) {
             std::uniform_int_distribution<> anchorDist(0, (int)anchors.size() - 1);
             spawnAnchor = anchors[anchorDist(rng)];
-            // Düşmanın dibinde doğsun (50 ile 150 birim arası)
             currentMinDist = 50.0f;
             currentMaxDist = 150.0f;
         }
 
-        std::uniform_real_distribution<float> angleDist(0.0f, static_cast<float>(2.0 * M_PI));
-        std::uniform_real_distribution<float> radiusDist(currentMinDist, currentMaxDist);
-        float angle = angleDist(rng);
-        float radius = radiusDist(rng);
-        float offsetX = radius * std::cos(angle);
-        float offsetY = radius * std::sin(angle);
+        RE::NiPoint3 spawnPos = FindValidSpawnPosition(spawnAnchor, currentMinDist, currentMaxDist);
 
-        auto handle = SpawnSingleActor(spawnAnchor, faction, isBoss, offsetX, offsetY);
+        auto handle = SpawnSingleActor(spawnAnchor, faction, isBoss, spawnPos);
         if (handle) {
             result.spawnedActors.push_back(handle);
         }
@@ -746,8 +1458,6 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
 }
 
 // ── Ambush spawn ─────────────────────────────────────────────────
-// isOutdoorCamp=false → zindan cikisi pususu (AmbushSpawnDistance ~500 birim, yakin)
-// isOutdoorCamp=true  → acik dunya kamp terk pususu (AmbushCampSpawnDistance ~1500 birim, uzak)
 SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) {
     SpawnResult result{ {}, 0 };
     auto player = RE::PlayerCharacter::GetSingleton();
@@ -773,8 +1483,6 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     std::uniform_int_distribution<> countDist(minC, maxC);
     int count = countDist(rng);
 
-    // Boss kontrolü
-    // Boss spawn kontrolü: garantili + ekstra şans
     auto bossInfo = GetBossSpawnInfo(pLevel);
     int totalBossCount = bossInfo.guaranteed;
     if (bossInfo.extraChance > 0) {
@@ -784,7 +1492,6 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
         }
     }
 
-    // Mesafeyi pusu tipine göre seç
     float ambushDist = isOutdoorCamp ? Settings::AmbushCampSpawnDistance : Settings::AmbushSpawnDistance;
 
     SKSE::log::info("=== SpawnAmbush ===");
@@ -800,21 +1507,12 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     for (int i = 0; i < count; ++i) {
         bool isBoss = (i < totalBossCount);
 
-        // Oyuncunun önünde 120 derecelik bir yarım dairede yayıl
-        std::uniform_real_distribution<float> arcDist(-1.05f, 1.05f);  // ±60 derece
-        
-        // Zindan çıkışları için çok daha yakın spawnla
         float minR = isOutdoorCamp ? ambushDist * 0.7f : 150.0f;
         float maxR = isOutdoorCamp ? ambushDist * 1.3f : 300.0f;
-        
-        std::uniform_real_distribution<float> radiusDist(minR, maxR);
-        
-        float angle = playerAngle + arcDist(rng);
-        float radius = radiusDist(rng);
-        float offsetX = radius * std::cos(angle);
-        float offsetY = radius * std::sin(angle);
 
-        auto handle = SpawnSingleActor(player, faction, isBoss, offsetX, offsetY);
+        RE::NiPoint3 spawnPos = FindValidSpawnPosition(player, minR, maxR, playerAngle, 2.1f);
+
+        auto handle = SpawnSingleActor(player, faction, isBoss, spawnPos);
         if (handle) {
             result.spawnedActors.push_back(handle);
         }
