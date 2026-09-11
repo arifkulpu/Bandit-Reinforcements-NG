@@ -90,7 +90,7 @@ void InitPeriodicSpawner() {
                         std::uniform_int_distribution<int> dist(Settings::BackupTimerMin, Settings::BackupTimerMax);
                         currentBackupTarget = dist(rng);
                         
-                        // İsimsiz kamp pusu kontrolü
+                        // İsimsiz kamp pusu kontrolü: önceki dış mekan hücresinde unnamed faction set edilmişse ambush at
                         auto sink = LocationEventSink::GetSingleton();
                         if (sink && sink->GetCurrentUnnamedFaction() != FactionType::Unknown) {
                             auto ambushFaction = sink->GetCurrentUnnamedFaction();
@@ -99,7 +99,7 @@ void InitPeriodicSpawner() {
                             BanditSpawner::SpawnAmbush(ambushFaction, true);
                         }
 
-                        // SADECE İÇ MEKANLAR İÇİN HÜCRE BAZLI SPAWN VE KOPYALAMA
+                        // İÇ MEKAN: Hücre bazlı spawn (zindan/mağara)
                         if (isInterior) {
                             FactionType cellFaction = BanditSpawner::DetermineFactionForCell(cell, loc);
                             
@@ -114,6 +114,33 @@ void InitPeriodicSpawner() {
                                     if (spawnResult.count > 0) {
                                         SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
                                     }
+                                }
+                            }
+                        }
+                        // DIŞ MEKAN: İsimsiz kamp hücre değişiminde takviye spawn'u
+                        // TESActorLocationChangeEvent isimsiz bölgelerde güvenilir tetiklenmediğinden,
+                        // hücre değişimini yakalayıp burada da spawn yapıyoruz.
+                        else {
+                            FactionType cellFaction = BanditSpawner::DetermineFactionForCell(cell, loc);
+
+                            if (cellFaction != FactionType::Unknown) {
+                                BanditSpawner::UpdateCache(cell, cellFaction);
+
+                                // Eğer isimsiz alan ise unnamed faction'ı set et (çıkışta ambush için)
+                                if (!loc && sink) {
+                                    sink->SetCurrentUnnamedFaction(cellFaction);
+                                    SKSE::log::info(">> [PeriodicTask] Entered UNNAMED exterior hostile area (faction={})", static_cast<int>(cellFaction));
+                                }
+
+                                RE::FormID trackID = BanditSpawner::GetTrackingID(cell, loc);
+                                if (SpawnTracker::GetSingleton()->IsLocationReady(trackID)) {
+                                    SKSE::log::info(">> [PeriodicTask] CELL SPAWN (Exterior): TrackID=0x{:08X} Cell=0x{:08X} (faction={})", trackID, currentCellID, static_cast<int>(cellFaction));
+                                    auto spawnResult = BanditSpawner::SpawnReinforcements(cell, cellFaction);
+                                    if (spawnResult.count > 0) {
+                                        SpawnTracker::GetSingleton()->RegisterSpawn(trackID, spawnResult.spawnedActors);
+                                    }
+                                } else {
+                                    SKSE::log::info(">> [PeriodicTask] Exterior location 0x{:08X} in COOLDOWN, skipping.", trackID);
                                 }
                             }
                         }

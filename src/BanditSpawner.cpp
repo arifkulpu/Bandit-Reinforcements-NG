@@ -481,11 +481,13 @@ int BanditSpawner::GetSpawnCount() {
     if (!player) return 0;
 
     int pLevel = player->GetLevel();
-    if (pLevel < 10) {
+    // Seviye 1'den spawn özelliği: kapalıysa Lvl 1-9 hiç spawn yapmaz.
+    // Açıksa Lvl 1-9 arası Lvl 10-24 ile aynı maxSpawns kullanır.
+    if (pLevel < 10 && !Settings::SpawnFromLevel1) {
         if (Settings::EnableLogging) {
-            SKSE::log::info("  GetSpawnCount: Player level {} < 10, no spawns (deliberate design).", pLevel);
+            SKSE::log::info("  GetSpawnCount: Player level {} < 10 and SpawnFromLevel1=false, no spawns.", pLevel);
         }
-        return 0; // Lvl 1-9 hic spawn yok
+        return 0; // Lvl 1-9 hic spawn yok (varsayilan)
     }
 
     int maxSpawns = Settings::MaxSpawnsLevel10_24;
@@ -534,7 +536,8 @@ struct BossSpawnInfo {
 };
 
 BossSpawnInfo GetBossSpawnInfo(int pLevel) {
-    if (pLevel < 10)   return {0, 0};
+    // SpawnFromLevel1 açıksa Lvl 1-9 arası Lvl 10-24 boss şansını kullanır
+    if (pLevel < 10 && !Settings::SpawnFromLevel1) return {0, 0};
     if (pLevel >= 50)  return {2, Settings::BossChanceLevel50Plus};  // 2 garanti + %40 sans
     if (pLevel >= 25)  return {1, Settings::BossChanceLevel25_49};   // 1 garanti + %30 sans
     return                     {0, Settings::BossChanceLevel10_24};  // 0 garanti + %20 sans
@@ -1464,8 +1467,9 @@ SpawnResult BanditSpawner::SpawnAmbush(FactionType faction, bool isOutdoorCamp) 
     if (!player) return result;
 
     int pLevel = player->GetLevel();
-    if (pLevel < 10) {
-        SKSE::log::info("SpawnAmbush: SKIPPED (player level < 10)");
+    // SpawnFromLevel1 kapalıysa seviye 10 altında ambush yok
+    if (pLevel < 10 && !Settings::SpawnFromLevel1) {
+        SKSE::log::info("SpawnAmbush: SKIPPED (player level < 10, SpawnFromLevel1=false)");
         return result;
     }
 

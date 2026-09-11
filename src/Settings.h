@@ -30,6 +30,9 @@ namespace Settings {
     // Klon yogunlugu (0-100%): Maksimum spawn sayısını bu oranla çarpar.
     // %100 = her zaman maksimum klon, %50 = maksimumun yaklasik yarisi, %0 = hic spawn yok.
     inline int SpawnDensity = 75;
+    // Seviye 1'den itibaren spawn aktif mi? (varsayilan: kapali)
+    // Acik olursa seviye 1-9 arasi seviye 10-24 limitleriyle spawn yapar.
+    inline bool SpawnFromLevel1 = false;
 
     // Boss (Level-based chance)
     inline int BossChanceLevel10_24 = 20;
@@ -101,6 +104,9 @@ namespace Settings {
             "; Dusmanlar oyuncudan ne kadar uzakta dogacak (oyun birimi) / Patrol spawn distance (game units)");
         ini.SetLongValue("Spawning", "iSpawnDensity", 75,
             "; Klon yogunlugu % (0-100): Maks spawn sayisini bu oran ile olcer. 100=her zaman maksimum, 0=hic spawn yok / Spawn density percentage");
+        ini.SetBoolValue("Spawning", "bSpawnFromLevel1", false,
+            "; Seviye 1'den itibaren spawn aktif mi? (1: Evet, 0: Hayir) / Enable spawns from level 1? (default: disabled)\n"
+            "; Acikken seviye 1-9 arasi, seviye 10-24 ile ayni limitlerle calisir. / When enabled, Lvl 1-9 uses same limits as Lvl 10-24.");
 
         // Boss
         ini.SetLongValue("Boss", "iBossChanceLevel10_24", 20,
@@ -188,6 +194,7 @@ namespace Settings {
             SpawnDensity = static_cast<int>(ini.GetLongValue("Spawning", "iSpawnDensity", 75));
             if (SpawnDensity < 0)   SpawnDensity = 0;
             if (SpawnDensity > 100) SpawnDensity = 100;
+            SpawnFromLevel1 = ini.GetBoolValue("Spawning", "bSpawnFromLevel1", false);
 
             // Boss
             BossChanceLevel10_24 = static_cast<int>(ini.GetLongValue("Boss", "iBossChanceLevel10_24", 20));
@@ -272,6 +279,7 @@ namespace Settings {
         ini.SetLongValue("Spawning", "iMaxSpawnsLevel50Plus", MaxSpawnsLevel50Plus);
         ini.SetDoubleValue("Spawning", "fPatrolSpawnDistance", PatrolSpawnDistance);
         ini.SetLongValue("Spawning", "iSpawnDensity", SpawnDensity);
+        ini.SetBoolValue("Spawning", "bSpawnFromLevel1", SpawnFromLevel1);
 
         ini.SetLongValue("Boss", "iBossChanceLevel10_24", BossChanceLevel10_24);
         ini.SetLongValue("Boss", "iBossChanceLevel25_49", BossChanceLevel25_49);

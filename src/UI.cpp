@@ -53,8 +53,21 @@ static void __stdcall RenderSpawning() {
     ImGui::Separator();
     ImGui::Spacing();
 
+    // Seviye 1'den spawn özelliği
+    ImGui::Spacing();
+    SAVE_IF_CHANGED(ImGui::Checkbox("Enable Spawns from Level 1##sfl1", &Settings::SpawnFromLevel1));
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("When enabled, players at levels 1-9 will also trigger spawns and ambushes,\n"
+                          "using the same limits as the Lvl 10-24 bracket. (Default: OFF)");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(default: OFF)");
+
     // Max spawns per level bracket
+    ImGui::Spacing();
+    ImGui::Separator();
     ImGui::TextDisabled("Max extra enemies by player level:");
+    ImGui::TextDisabled("  (Lvl 1-9 uses Lvl 10-24 limits when 'Spawn from Level 1' is ON)");
     SAVE_ON_RELEASE(ImGui::SliderInt("Max Spawns  (Lvl 10-24)##s1", &Settings::MaxSpawnsLevel10_24,  1, 20));
     SAVE_ON_RELEASE(ImGui::SliderInt("Max Spawns  (Lvl 25-49)##s2", &Settings::MaxSpawnsLevel25_49, 1, 30));
     SAVE_ON_RELEASE(ImGui::SliderInt("Max Spawns  (Lvl 50+)##s3",   &Settings::MaxSpawnsLevel50Plus, 1, 50));
