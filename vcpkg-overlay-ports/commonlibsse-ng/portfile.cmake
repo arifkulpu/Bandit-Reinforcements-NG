@@ -11,6 +11,11 @@ vcpkg_replace_string("${SOURCE_PATH}/CMakeLists.txt"
   "option(BUILD_TESTS \"Enable building of the unit tests.\" OFF)"
 )
 
+vcpkg_replace_string("${SOURCE_PATH}/include/REL/Module.h"
+  "case 6:\n\t\t\t\t\t\t_runtime = Runtime::AE;"
+  "case 6:\n\t\t\t\t\tcase 7:\n\t\t\t\t\t\t_runtime = Runtime::AE;"
+)
+
 vcpkg_configure_cmake(
   SOURCE_PATH "${SOURCE_PATH}"
   PREFER_NINJA
