@@ -48,6 +48,13 @@ void BanditSpawner::DumpLeveledLists() {
 
 // ── Standardized tracking ID helper ──────────────────────────────
 RE::FormID BanditSpawner::GetTrackingID(RE::TESObjectCELL* cell, RE::BGSLocation* loc) {
+    // İÇ MEKAN (Zindan/Maden içi):
+    // Zindanın dış kapı/kamp alanı ile iç mekanı aynı BGSLocation ID'sine sahip olabiliyor.
+    // Dışarıdaki bir çatışma/spawn içeriye girdiğimizde zindanı cooldown'a sokmasın diye
+    // iç mekanlarda her zaman hücrenin kendi FormID'sini (veya iç mekan ayrımını) kullanıyoruz.
+    if (cell && cell->IsInteriorCell()) {
+        return cell->GetFormID();
+    }
     if (loc && loc->GetFormID() != 0) {
         return loc->GetFormID();
     }
@@ -202,12 +209,15 @@ bool BanditSpawner::IsEliteNPC(RE::Actor* /*actor*/, RE::TESNPC* npc) {
     const char* eidRaw = npc->GetFormEditorID();
     std::string eid = toLower(eidRaw ? eidRaw : "");
 
-    // Madenci, işçi, sivil veya esirler ASLA Boss/Elit olamaz
+    // Madenci, işçi, sivil, avcı veya esirler ASLA Boss/Elit olamaz
     if (name.find("miner") != std::string::npos || eid.find("miner") != std::string::npos ||
         name.find("worker") != std::string::npos || eid.find("worker") != std::string::npos ||
         name.find("captive") != std::string::npos || eid.find("captive") != std::string::npos ||
         name.find("prisoner") != std::string::npos || eid.find("prisoner") != std::string::npos ||
-        name.find("civilian") != std::string::npos || eid.find("civilian") != std::string::npos) {
+        name.find("civilian") != std::string::npos || eid.find("civilian") != std::string::npos ||
+        name.find("hunter") != std::string::npos || eid.find("hunter") != std::string::npos ||
+        name.find("farmer") != std::string::npos || eid.find("farmer") != std::string::npos ||
+        name.find("peddler") != std::string::npos || eid.find("peddler") != std::string::npos) {
         return false;
     }
 
@@ -382,9 +392,12 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                                       aName.find("captive") != std::string::npos || aEid.find("captive") != std::string::npos ||
                                       aName.find("prisoner") != std::string::npos || aEid.find("prisoner") != std::string::npos ||
                                       aName.find("citizen") != std::string::npos || aEid.find("citizen") != std::string::npos ||
-                                      aName.find("civilian") != std::string::npos || aEid.find("civilian") != std::string::npos);
+                                      aName.find("civilian") != std::string::npos || aEid.find("civilian") != std::string::npos ||
+                                      aName.find("hunter") != std::string::npos || aEid.find("hunter") != std::string::npos ||
+                                      aName.find("farmer") != std::string::npos || aEid.find("farmer") != std::string::npos ||
+                                      aName.find("peddler") != std::string::npos || aEid.find("peddler") != std::string::npos);
 
-            // Oyuncuya düşman mı kontrolü: Eğer oyuncuya düşman değilse ve ismi sivil/miner ise ASLA fallback kabul etme
+            // Oyuncuya düşman mı kontrolü: Eğer oyuncuya düşman değilse ve ismi sivil/miner/avcı ise ASLA fallback kabul etme
             bool isHostile = actor->IsHostileToActor(player);
 
             bool isHumanoidFaction = (faction == FactionType::Bandit || faction == FactionType::Warlock ||
@@ -790,7 +803,10 @@ static void ParseAndAddToCache(const char* csvStr, FactionType faction) {
             nName.find("worker") != std::string::npos || nEid.find("worker") != std::string::npos ||
             nName.find("captive") != std::string::npos || nEid.find("captive") != std::string::npos ||
             nName.find("prisoner") != std::string::npos || nEid.find("prisoner") != std::string::npos ||
-            nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos) {
+            nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos ||
+            nName.find("hunter") != std::string::npos || nEid.find("hunter") != std::string::npos ||
+            nName.find("farmer") != std::string::npos || nEid.find("farmer") != std::string::npos ||
+            nName.find("peddler") != std::string::npos || nEid.find("peddler") != std::string::npos) {
             ++skipped;
             continue;
         }
@@ -1027,7 +1043,10 @@ void BanditSpawner::LoadCachedBossFormIDs() {
                 nName.find("worker") != std::string::npos || nEid.find("worker") != std::string::npos ||
                 nName.find("captive") != std::string::npos || nEid.find("captive") != std::string::npos ||
                 nName.find("prisoner") != std::string::npos || nEid.find("prisoner") != std::string::npos ||
-                nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos) {
+                nName.find("civilian") != std::string::npos || nEid.find("civilian") != std::string::npos ||
+                nName.find("hunter") != std::string::npos || nEid.find("hunter") != std::string::npos ||
+                nName.find("farmer") != std::string::npos || nEid.find("farmer") != std::string::npos ||
+                nName.find("peddler") != std::string::npos || nEid.find("peddler") != std::string::npos) {
                 ++skipped;
                 continue;
             }
@@ -1413,7 +1432,10 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
                 bool isCivilianOrMiner = (aName.find("miner") != std::string::npos || aEid.find("miner") != std::string::npos ||
                                           aName.find("worker") != std::string::npos || aEid.find("worker") != std::string::npos ||
                                           aName.find("captive") != std::string::npos || aEid.find("captive") != std::string::npos ||
-                                          aName.find("prisoner") != std::string::npos || aEid.find("prisoner") != std::string::npos);
+                                          aName.find("prisoner") != std::string::npos || aEid.find("prisoner") != std::string::npos ||
+                                          aName.find("hunter") != std::string::npos || aEid.find("hunter") != std::string::npos ||
+                                          aName.find("farmer") != std::string::npos || aEid.find("farmer") != std::string::npos ||
+                                          aName.find("peddler") != std::string::npos || aEid.find("peddler") != std::string::npos);
 
                 if (hasCombatStyle && !isGuard && (!isEssential || isCreatureFaction) && !isProtected && !isCivilianOrMiner) {
                     if (actor->IsHostileToActor(player)) {
