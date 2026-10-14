@@ -34,6 +34,7 @@ public:
 
     // Determine faction type from a BGSLocation's keywords
     // Helper: Determine faction by cell dominance or fallback to location keywords
+    static bool IsSafeLocation(RE::BGSLocation* loc);
     static FactionType DetermineFactionForCell(RE::TESObjectCELL* cell, RE::BGSLocation* loc);
     static FactionType ScanCellForDominantFaction(RE::TESObjectCELL* cell);
     static FactionType GetFactionFromLocation(RE::BGSLocation* loc);

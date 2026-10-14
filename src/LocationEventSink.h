@@ -23,6 +23,20 @@ public:
     void SetCurrentUnnamedFaction(FactionType faction) { m_currentUnnamedFaction = faction; }
     FactionType GetCurrentUnnamedFaction() const { return m_currentUnnamedFaction; }
 
+    // Genel pusu cooldown kontrolü (300 saniye = 5 dakika)
+    bool CanTriggerAmbush(RE::FormID id) {
+        auto now = std::chrono::steady_clock::now();
+        auto it = m_lastAmbushTime.find(id);
+        if (it != m_lastAmbushTime.end()) {
+            float elapsed = std::chrono::duration<float>(now - it->second).count();
+            if (elapsed < kAmbushCooldownSec) {
+                return false;
+            }
+        }
+        m_lastAmbushTime[id] = now;
+        return true;
+    }
+
 private:
     // Track the last interior cell to detect dungeon exits (for ambush)
     RE::FormID m_lastInteriorCellID = 0;
@@ -45,8 +59,8 @@ private:
     RE::FormID m_lastDungeonAmbushCellID = 0;
     std::chrono::steady_clock::time_point m_lastDungeonAmbushTime;
 
-    // Minimum sure (gercek zaman, saniye) iki pusu arasinda (3 dakika = 180 saniye)
-    static constexpr float kAmbushCooldownSec = 180.0f;
+    // Minimum sure (gercek zaman, saniye) iki pusu arasinda (5 dakika = 300 saniye)
+    static constexpr float kAmbushCooldownSec = 300.0f;
 };
 
 

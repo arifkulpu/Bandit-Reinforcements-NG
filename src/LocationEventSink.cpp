@@ -68,7 +68,11 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
         auto prevCell = RE::TESForm::LookupByID<RE::TESObjectCELL>(m_lastInteriorCellID);
         if (prevCell) {
             RE::BGSLocation* prevLoc = prevCell->GetLocation();
-            if (prevLoc) {
+            // Eğer çıkış yaptığımız dış mekan hücresi veya lokasyon güvenli alansa (örneğin handan çıkış) asla pusu atma!
+            auto curLoc = cell->GetLocation();
+            bool isExitSafe = BanditSpawner::IsSafeLocation(curLoc);
+
+            if (prevLoc && !isExitSafe && !BanditSpawner::IsSafeLocation(prevLoc)) {
                 auto faction = BanditSpawner::DetermineFactionForCell(prevCell, prevLoc);
                 if (faction != FactionType::Unknown) {
                     BanditSpawner::UpdateCache(prevCell, faction);
@@ -125,11 +129,37 @@ RE::BSEventNotifyControl LocationEventSink::ProcessEvent(
         bool leavingHostileArea = (oldFaction != FactionType::Unknown);
         bool enteringDifferentArea = (!newLoc || newLoc != oldLoc);
 
-        if (leavingHostileArea && enteringDifferentArea) {
+        // Zindan, mağara, harabe vb. keşif sırasında dışarıdan yanından geçildiğinde CAMP LEAVE tetiklenmemeli!
+        // Mağara/zindan pusuları sadece zindanın İÇİNDEN dışarı çıkıldığında (ProcessEvent(CellAttachDetachEvent)) olmalıdır.
+        static auto kwdDungeon = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDungeon");
+        static auto kwdCrypt   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDraugrCrypt");
+        static auto kwdHive    = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeFalmerHive");
+        static auto kwdRuin    = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDwarvenRuin");
+        static auto kwdLair    = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeVampireLair");
+        static auto kwdWLair   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeWarlockLair");
+
+        if (!kwdDungeon) kwdDungeon = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0E);
+        if (!kwdCrypt)   kwdCrypt   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D2);
+        if (!kwdHive)    kwdHive    = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D4);
+        if (!kwdRuin)    kwdRuin    = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D3);
+        if (!kwdLair)    kwdLair    = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DB);
+        if (!kwdWLair)   kwdWLair   = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DE);
+
+        bool isDungeonLocation = (kwdDungeon && oldLoc->HasKeyword(kwdDungeon)) ||
+                                 (kwdCrypt && oldLoc->HasKeyword(kwdCrypt)) ||
+                                 (kwdHive && oldLoc->HasKeyword(kwdHive)) ||
+                                 (kwdRuin && oldLoc->HasKeyword(kwdRuin)) ||
+                                 (kwdLair && oldLoc->HasKeyword(kwdLair)) ||
+                                 (kwdWLair && oldLoc->HasKeyword(kwdWLair));
+
+        // Eğer yeni lokasyon bir şehir, kasaba, han veya yerleşim yeriyse asla pusu atma
+        bool enteringSafeLocation = BanditSpawner::IsSafeLocation(newLoc);
+
+        if (leavingHostileArea && enteringDifferentArea && !isDungeonLocation && !enteringSafeLocation) {
             SKSE::log::info(">> CAMP LEAVE DETECTED! OldLoc=0x{:08X} (faction={})", 
                            oldLoc->GetFormID(), static_cast<int>(oldFaction));
             
-            // Cooldown kontrolü: Aynı kamptan 30 saniye içinde tekrar pusu çıkmasın
+            // Cooldown kontrolü: Aynı kamptan tekrar pusu çıkmasın
             auto now = std::chrono::steady_clock::now();
             RE::FormID oldLocID = oldLoc->GetFormID();
             bool cooldownOk = true;

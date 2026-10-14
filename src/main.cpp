@@ -95,8 +95,14 @@ void InitPeriodicSpawner() {
                         if (sink && sink->GetCurrentUnnamedFaction() != FactionType::Unknown) {
                             auto ambushFaction = sink->GetCurrentUnnamedFaction();
                             sink->SetCurrentUnnamedFaction(FactionType::Unknown);
-                            SKSE::log::info(">> UNNAMED CAMP LEAVE DETECTED! (faction={})", static_cast<int>(ambushFaction));
-                            BanditSpawner::SpawnAmbush(ambushFaction, true);
+                            
+                            // Eğer yeni girdiğimiz lokasyon güvenli bir alansa (köy/han vb.) veya cooldown dolmamışsa pusu atma
+                            if (!BanditSpawner::IsSafeLocation(loc) && sink->CanTriggerAmbush(currentCellID)) {
+                                SKSE::log::info(">> UNNAMED CAMP LEAVE DETECTED! (faction={})", static_cast<int>(ambushFaction));
+                                BanditSpawner::SpawnAmbush(ambushFaction, true);
+                            } else {
+                                SKSE::log::info(">> UNNAMED CAMP LEAVE SKIPPED (safe location or ambush cooldown)");
+                            }
                         }
 
                         // İÇ MEKAN: Hücre bazlı spawn (zindan/mağara)

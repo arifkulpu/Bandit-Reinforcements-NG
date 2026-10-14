@@ -659,28 +659,55 @@ FactionType BanditSpawner::ScanCellForDominantFaction(RE::TESObjectCELL* cell) {
     return bestFaction;
 }
 
-FactionType BanditSpawner::DetermineFactionForCell(RE::TESObjectCELL* cell, RE::BGSLocation* loc) {
-    if (loc) {
-        // Şehir, kasaba veya yerleşim yeriyse KESİNLİKLE tarama yapma
-        auto kwdCity = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeCity");
-        auto kwdTown = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeTown");
-        auto kwdSettlement = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeSettlement");
-        auto kwdDwelling = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDwelling");
-        auto kwdPlayerHouse = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypePlayerHouse");
-        
-        if (!kwdCity) kwdCity = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D7);
-        if (!kwdTown) kwdTown = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D8);
-        if (!kwdSettlement) kwdSettlement = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0F);
-        if (!kwdDwelling) kwdDwelling = RE::TESForm::LookupByID<RE::BGSKeyword>(0x0008CA7C);
-        if (!kwdPlayerHouse) kwdPlayerHouse = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8DE4);
+bool BanditSpawner::IsSafeLocation(RE::BGSLocation* loc) {
+    if (!loc) return false;
 
-        if ((kwdCity && loc->HasKeyword(kwdCity)) ||
-            (kwdTown && loc->HasKeyword(kwdTown)) ||
-            (kwdSettlement && loc->HasKeyword(kwdSettlement)) ||
-            (kwdDwelling && loc->HasKeyword(kwdDwelling)) ||
-            (kwdPlayerHouse && loc->HasKeyword(kwdPlayerHouse))) {
-            return FactionType::Unknown;
-        }
+    // Şehir, kasaba, yerleşim yeri, han, tapınak, dükkan vb. güvenli alan anahtar kelimeleri
+    static auto kwdCity        = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeCity");
+    static auto kwdTown        = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeTown");
+    static auto kwdSettlement  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeSettlement");
+    static auto kwdDwelling    = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeDwelling");
+    static auto kwdPlayerHouse = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypePlayerHouse");
+    static auto kwdInn         = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeInn");
+    static auto kwdStore       = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeStore");
+    static auto kwdTemple      = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeTemple");
+    static auto kwdGuild       = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeGuild");
+    static auto kwdFarm        = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeFarm");
+
+    if (!kwdCity)        kwdCity        = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D7);
+    if (!kwdTown)        kwdTown        = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D8);
+    if (!kwdSettlement)  kwdSettlement  = RE::TESForm::LookupByID<RE::BGSKeyword>(0x00018A0F);
+    if (!kwdDwelling)    kwdDwelling    = RE::TESForm::LookupByID<RE::BGSKeyword>(0x0008CA7C);
+    if (!kwdPlayerHouse) kwdPlayerHouse = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000A8DE4);
+    if (!kwdInn)         kwdInn         = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130D9);
+    if (!kwdStore)       kwdStore       = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DB);
+    if (!kwdTemple)      kwdTemple      = RE::TESForm::LookupByID<RE::BGSKeyword>(0x000130DC);
+
+    if ((kwdCity && loc->HasKeyword(kwdCity)) ||
+        (kwdTown && loc->HasKeyword(kwdTown)) ||
+        (kwdSettlement && loc->HasKeyword(kwdSettlement)) ||
+        (kwdDwelling && loc->HasKeyword(kwdDwelling)) ||
+        (kwdPlayerHouse && loc->HasKeyword(kwdPlayerHouse)) ||
+        (kwdInn && loc->HasKeyword(kwdInn)) ||
+        (kwdStore && loc->HasKeyword(kwdStore)) ||
+        (kwdTemple && loc->HasKeyword(kwdTemple)) ||
+        (kwdGuild && loc->HasKeyword(kwdGuild)) ||
+        (kwdFarm && loc->HasKeyword(kwdFarm))) {
+        return true;
+    }
+
+    // Üst (parent) lokasyon kontrolü: Örneğin Nightgate Inn'in odası veya dış alanı ana lokasyondan keyword almış olabilir
+    if (loc->parentLoc && IsSafeLocation(loc->parentLoc)) {
+        return true;
+    }
+
+    return false;
+}
+
+FactionType BanditSpawner::DetermineFactionForCell(RE::TESObjectCELL* cell, RE::BGSLocation* loc) {
+    // Şehir, kasaba, han veya yerleşim yeriyse KESİNLİKLE tarama yapma
+    if (IsSafeLocation(loc)) {
+        return FactionType::Unknown;
     }
 
     FactionType dominant = ScanCellForDominantFaction(cell);
@@ -698,7 +725,11 @@ FactionType BanditSpawner::DetermineFactionForCell(RE::TESObjectCELL* cell, RE::
 FactionType BanditSpawner::GetFactionFromLocation(RE::BGSLocation* loc) {
     if (!loc) return FactionType::Unknown;
 
-    // Şehir, kasaba veya yerleşim yeriyse KESİNLİKLE spawn atma
+    // Şehir, kasaba, han veya yerleşim yeriyse KESİNLİKLE spawn atma
+    if (IsSafeLocation(loc)) {
+        return FactionType::Unknown;
+    }
+
     auto kwdBandit   = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeBanditCamp");
     auto kwdVampire  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeVampireLair");
     auto kwdWarlock  = RE::TESForm::LookupByEditorID<RE::BGSKeyword>("LocTypeWarlockLair");
