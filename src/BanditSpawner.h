@@ -39,6 +39,10 @@ public:
     static FactionType ScanCellForDominantFaction(RE::TESObjectCELL* cell);
     static FactionType GetFactionFromLocation(RE::BGSLocation* loc);
 
+    // NPC'nin klonlama/spawn için uygun olup olmadığını kontrol eder (Unique, Essential, Protected, Invulnerable, Quest)
+    static bool IsExcludedActor(RE::Actor* actor, RE::TESBoundObject* effectiveBase);
+    static bool IsExcludedTemplate(RE::TESBoundObject* form);
+
     // Common faction classification helper
     static bool ClassifyActorFaction(RE::Actor* actor, FactionType targetFaction, bool& outIsKnownOtherFaction);
     static FactionType DetectActorFaction(RE::Actor* actor);

@@ -62,6 +62,16 @@ Oyuncu seviyesine göre çıkacak maksimum düşman sayısı değişir (Seviye 1
 - NPC doğma (spawning) işlemi görünmez "XMarker" referansları kullanılarak **Frame-Perfect** bir şekilde yapılır. Bu sayede oyunda havada asılı kalan (T-pose) veya görünmez NPC sorunları tamamen çözülmüştür.
 - Dinamik Kopyalama belleği (RAM) üzerinde çalışır, diske hiçbir kayıt (`.txt`) atmaz. Böylece oyununuzun Save dosyası asla bozulmaz (0xFF referans çökmesi yaşanmaz) ve tamamen güvenlidir.
 
+### V1.7 Güncelleme Notları (Quest & Mod Uyumluluğu)
+
+#### 🛡️ Unique, Essential, Protected ve Invulnerable NPC Koruması (VIGILANT vb. Mod Uyumluluğu)
+VIGILANT ve benzeri büyük quest modlarında zindanlarda yer alan benzersiz, ölümsüz veya görev karakterlerinin (Örn: Melus Petilius) yanlışlıkla düşman takviyesi olarak klonlanması ve öldürülemeyen kopya düşmanların oluşması sorunu tamamen giderildi:
+- **Runtime Kontrolleri:** Aktörün runtime seviyesinde `IsEssential()`, `IsProtected()` veya bir Quest Alias'ına bağlı `HasQuestObject()` olup olmadığı kontrol edilir.
+- **Base NPC Kontrolleri:** NPC kaydında `Unique`, `Essential`, `Protected` veya `Invulnerable` (Dokunulmaz) bayraklarından herhangi biri varsa klonlama havuzundan kesin olarak elenir.
+- **Template Zinciri Filtresi:** Leveled Character veya Template zincirine bağlı tüm formlar taranarak alt şablonların benzersiz veya dokunulmaz olup olmadığı denetlenir.
+- **Kalıcı Cache (INI) Temizliği:** Önceki oyun oturumlarında INI dosyasına kaydedilmiş olabilecek tüm FormID'ler oyuna girerken bu filtrelerden geçirilir; uygunsuz olanlar otomatik temizlenir.
+- **Anchor Güvenliği:** Takviye spawn noktası olarak seçilen yakın düşmanlar arasından da görev ve dokunulmaz karakterler filtrelenerek elenir.
+
 ### V1.1 Güncelleme Notları
 
 #### 🧠 Akıllı Çoğunluk Taraması (Dominant Faction Scanner)
@@ -222,6 +232,16 @@ Maximum extra enemies strictly scale with player level (no spawns under level 10
 - The mod uses **Lazy Evaluation** logic only when the player enters a new cell. Zero FPS impact.
 - Spawning relies on hidden "XMarkers" for **Frame-Perfect placement**, completely eradicating vanilla engine bugs like T-posing or invisible NPCs!
 - Dynamic caching is done 100% in-memory without persistent disk I/O, guaranteeing that your save file remains corruption-free (eliminating 0xFF invalid form crashes).
+
+### V1.7 Update Notes (Quest & Mod Compatibility)
+
+#### 🛡️ Unique, Essential, Protected & Invulnerable NPC Exclusion (VIGILANT & Quest Mod Compatibility)
+Completely resolved an issue where unique, essential, protected, or quest-related NPCs from quest mods (such as *Melus Petilius* in VIGILANT) could be dynamically cloned as enemy reinforcements, creating unkillable clone encounters:
+- **Runtime Checks:** Verified whether an actor is `IsEssential()`, `IsProtected()`, or assigned to a quest alias via `HasQuestObject()`.
+- **Base NPC Flags:** Completely excludes actors whose base data has `Unique`, `Essential`, `Protected`, or `Invulnerable` flags.
+- **Template Chain Traversal:** Traverses resolved Leveled Character / Template hierarchies to prevent spawning if any base template is flagged as unique or invulnerable.
+- **Persistent Cache (INI) Sanitization:** FormIDs loaded from previous sessions via the INI cache are validated against all new exclusion rules on startup, automatically purging invalid records.
+- **Anchor Filtering:** Excludes quest and invulnerable NPCs from being picked as spawn anchors during reinforcement waves.
 
 ### V1.1 Update Notes
 

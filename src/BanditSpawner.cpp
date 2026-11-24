@@ -250,6 +250,82 @@ bool BanditSpawner::IsEliteNPC(RE::Actor* /*actor*/, RE::TESNPC* npc) {
     return (npcBaseLevel >= eliteThreshold);
 }
 
+// ── Check if an actor or template is excluded from spawning/cloning ──
+bool BanditSpawner::IsExcludedActor(RE::Actor* actor, RE::TESBoundObject* effectiveBase) {
+    if (!actor) return true;
+
+    // 1. Canlılık kontrolü: Ölü aktörler de template olabilir ama temel geçersizse atla
+    auto baseObj = actor->GetActorBase();
+    if (!baseObj) return true;
+
+    // 2. Aktörün runtime bayrakları (Quest Target / Quest Object, Essential, Protected)
+    // Quest Alias'ları aktöre runtime'da kEssential / kProtected verebilir
+    if (actor->IsEssential()) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Actor is Essential (runtime/alias)");
+        return true;
+    }
+    if (actor->IsProtected()) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Actor is Protected (runtime/alias)");
+        return true;
+    }
+    if (actor->HasQuestObject()) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Actor is Quest Object (runtime alias/quest)");
+        return true;
+    }
+
+    // 3. Base NPC kontrolleri
+    if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Unique actor base");
+        return true;
+    }
+    if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Essential actor base");
+        return true;
+    }
+    if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Protected actor base");
+        return true;
+    }
+    if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kInvulnerable)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Invulnerable actor base");
+        return true;
+    }
+
+    // 4. Çözümlenmiş effective template kontrolleri (eğer Leveled NPC / template zinciriyse)
+    if (effectiveBase && effectiveBase != baseObj) {
+        if (IsExcludedTemplate(effectiveBase)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool BanditSpawner::IsExcludedTemplate(RE::TESBoundObject* form) {
+    if (!form) return true;
+    auto npc = form->As<RE::TESNPC>();
+    if (!npc) return true;
+
+    if (npc->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Unique template (0x{:08X})", form->GetFormID());
+        return true;
+    }
+    if (npc->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kEssential)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Essential template (0x{:08X})", form->GetFormID());
+        return true;
+    }
+    if (npc->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kProtected)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Protected template (0x{:08X})", form->GetFormID());
+        return true;
+    }
+    if (npc->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kInvulnerable)) {
+        if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Invulnerable template (0x{:08X})", form->GetFormID());
+        return true;
+    }
+
+    return false;
+}
+
 
 void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
     if (!cell || faction == FactionType::Unknown) return;
@@ -278,11 +354,6 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
                             ref->GetFormID(), baseObj->GetFormID(), baseObj->GetName(), actor->IsDead());
         }
         
-        if (baseObj->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
-            if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Unique actor");
-            continue;
-        }
-        
         RE::TESBoundObject* effectiveBase = baseObj;
         while (effectiveBase && effectiveBase->GetFormID() >= 0xFF000000) {
             auto actorBaseData = effectiveBase->As<RE::TESActorBaseData>();
@@ -298,14 +369,9 @@ void BanditSpawner::UpdateCache(RE::TESObjectCELL* cell, FactionType faction) {
             continue;
         }
 
-        // Çözümlenmiş template'in de unique olmadığını kontrol et
-        // (Örn: 0xFF Stalleo -> 0x00... Stalleo gibi özel NPC'lere çözümleniyor olabilir)
-        {
-            auto effectiveNPC = effectiveBase->As<RE::TESNPC>();
-            if (effectiveNPC && effectiveNPC->actorData.actorBaseFlags.any(RE::ACTOR_BASE_DATA::Flag::kUnique)) {
-                if (Settings::EnableLogging) SKSE::log::info("      -> SKIPPED: Resolved template is a Unique actor");
-                continue;
-            }
+        // Unique, Essential, Protected, Invulnerable, Quest Object filtreleri
+        if (IsExcludedActor(actor, effectiveBase)) {
+            continue;
         }
         
         // Faction kontrolü yapalım
@@ -820,7 +886,7 @@ static void ParseAndAddToCache(const char* csvStr, FactionType faction) {
         if (!form->As<RE::TESNPC>()) { ++skipped; continue; }
         auto npc = form->As<RE::TESNPC>();
         if (!npc) { ++skipped; continue; }
-        if (npc->IsUnique()) { ++skipped; continue; }
+        if (BanditSpawner::IsExcludedTemplate(form)) { ++skipped; continue; }
 
         // Sivil / madenci / tutsak isim kontrolü (önceki oturumlarda yanlış kaydedilmiş olanları temizle)
         auto toLower = [](std::string s) {
@@ -1060,7 +1126,7 @@ void BanditSpawner::LoadCachedBossFormIDs() {
             if (!form) { ++skipped; continue; }
 
             auto* npc = form->As<RE::TESNPC>();
-            if (!npc || npc->IsUnique()) { ++skipped; continue; }
+            if (!npc || BanditSpawner::IsExcludedTemplate(form)) { ++skipped; continue; }
 
             // Sivil / madenci / tutsak isim kontrolü
             auto toLower = [](std::string s) {
@@ -1476,7 +1542,10 @@ SpawnResult BanditSpawner::SpawnReinforcements(RE::TESObjectCELL* cell, FactionT
             }
 
             if (isCorrectFaction) {
-                anchors.push_back(actor);
+                // Quest veya dokunulmaz NPC'leri anchor olarak seçme
+                if (!IsExcludedActor(actor, nullptr)) {
+                    anchors.push_back(actor);
+                }
             }
         }
     }
